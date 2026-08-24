@@ -13,6 +13,7 @@ from app.models.media import NoteFile, Transcript
 from app.models.note import Note
 from app.queue import DEFAULT_RETRY, job_queue
 from app.schemas.media import NoteFileRead, TranscriptRead
+from app.services.storage import resolve_within, sanitize_filename
 
 router = APIRouter(tags=["media"])
 
@@ -36,7 +37,10 @@ async def upload_media(note_id: uuid.UUID, file: UploadFile, db: AsyncSession = 
 
     note_dir = Path(settings.upload_dir) / str(note_id)
     note_dir.mkdir(parents=True, exist_ok=True)
-    dest_path = note_dir / (file.filename or "upload")
+    # The client-supplied filename must never be used as more than a basename
+    # -- sanitize_filename strips any path components (e.g. "../../etc/passwd")
+    # that would otherwise let an upload escape note_dir.
+    dest_path = note_dir / sanitize_filename(file.filename)
 
     size = 0
     with dest_path.open("wb") as out:
@@ -83,7 +87,10 @@ async def get_media_file(note_id: uuid.UUID, db: AsyncSession = Depends(get_db))
     note_file = result.scalar_one_or_none()
     if not note_file:
         raise HTTPException(status_code=404, detail="No file for this note")
-    path = Path(settings.upload_dir) / note_file.storage_path
+    try:
+        path = resolve_within(Path(settings.upload_dir), note_file.storage_path)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid stored file path")
     if not path.exists():
         raise HTTPException(status_code=404, detail="File missing on disk")
     return FileResponse(path, media_type=note_file.mime_type or "application/octet-stream")
