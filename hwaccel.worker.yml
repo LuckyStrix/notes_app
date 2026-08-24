@@ -1,0 +1,12 @@
+# GPU reservation fragment for the transcription worker.
+# Mirrors the pattern from the user's ImmichDocker hwaccel.ml.yml (cuda profile),
+# a working NVIDIA passthrough setup on this machine via Docker Desktop + WSL2.
+services:
+  cuda:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

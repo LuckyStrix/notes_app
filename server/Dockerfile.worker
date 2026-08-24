@@ -1,0 +1,20 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg libpq5 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt requirements-worker.txt ./
+RUN pip install --no-cache-dir -r requirements.txt -r requirements-worker.txt
+
+COPY . .
+
+# faster-whisper (via ctranslate2) links against cuBLAS/cuDNN. Rather than a
+# full nvidia/cuda base image, we pull them in as pip wheels and point the
+# loader at them directly -- the documented approach for faster-whisper's
+# GPU execution provider on a plain slim base image.
+ENV LD_LIBRARY_PATH=/usr/local/lib/python3.11/site-packages/nvidia/cublas/lib:/usr/local/lib/python3.11/site-packages/nvidia/cudnn/lib
+
+CMD ["python", "-m", "app.worker_main"]

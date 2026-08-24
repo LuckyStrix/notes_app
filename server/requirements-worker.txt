@@ -1,0 +1,6 @@
+faster-whisper==1.1.0
+nvidia-cublas-cu12==12.4.5.8
+nvidia-cudnn-cu12==9.1.0.70
+requests==2.32.3
+pypdf==5.1.0
+python-docx==1.1.2
