@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
@@ -12,6 +13,9 @@ class NoteFileRead(BaseModel):
     mime_type: str | None
     duration_seconds: float | None
     size_bytes: int | None
+    candidate_status: str | None
+    candidate_error: str | None
+    candidates_generated_at: datetime | None
 
 
 class TranscriptSegmentRead(BaseModel):

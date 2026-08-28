@@ -17,6 +17,10 @@ class NoteUpdate(BaseModel):
     group_id: uuid.UUID | None = None
     title: str | None = None
     body: str | None = None
+    # Set by boundary-event saves (blur, navigate-away, tab-close) to force a
+    # NoteVersion snapshot regardless of the usual ~60s throttle -- see
+    # app.api.notes.update_note. Left False on the routine debounced autosave.
+    force_version: bool = False
 
 
 class NoteRead(BaseModel):
@@ -33,3 +37,12 @@ class NoteRead(BaseModel):
     error_message: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class NoteVersionRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    title: str
+    body: str | None
+    created_at: datetime

@@ -1,7 +1,20 @@
+export type GraphStatus = "ready" | "processing" | "error";
+export type SummaryGenerationStatus = "idle" | "processing" | "ready" | "error";
+
 export interface Project {
   id: string;
   name: string;
   description: string | null;
+  rag_top_k: number | null;
+  rag_similarity_floor: number | null;
+  position: number;
+  graph_status: GraphStatus;
+  graph_error: string | null;
+  graph_updated_at: string | null;
+  summary_generation_status: SummaryGenerationStatus;
+  summary_generation_error: string | null;
+  summary_generation_progress: number;
+  summary_generation_total: number;
   created_at: string;
   updated_at: string;
 }
@@ -31,6 +44,15 @@ export interface Note {
   updated_at: string;
 }
 
+export interface NoteVersion {
+  id: string;
+  title: string;
+  body: string | null;
+  created_at: string;
+}
+
+export type CandidateStatus = "processing" | "ready" | "error" | null;
+
 export interface NoteFile {
   id: string;
   note_id: string;
@@ -38,6 +60,29 @@ export interface NoteFile {
   mime_type: string | null;
   duration_seconds: number | null;
   size_bytes: number | null;
+  candidate_status: CandidateStatus;
+  candidate_error: string | null;
+  candidates_generated_at: string | null;
+}
+
+export interface DiagramCandidate {
+  id: string;
+  note_id: string;
+  source_page: number | null;
+  source_timestamp: number | null;
+  ordinal: number;
+}
+
+export interface Diagram {
+  id: string;
+  note_id: string;
+  source_page: number | null;
+  source_timestamp: number | null;
+  ocr_text: string | null;
+  caption: string | null;
+  status: "processing" | "ready" | "error";
+  error_message: string | null;
+  created_at: string;
 }
 
 export interface TranscriptSegment {
@@ -72,10 +117,14 @@ export interface GraphEdge {
   cooccurrence_count: number;
 }
 
+export type SummaryTier = "quality" | "basic" | null;
+
 export interface GraphSummary {
   title: string;
-  content: string;
+  content: string | null;
   citations: Citation[];
+  tier: SummaryTier;
+  generated_at: string | null;
 }
 
 export interface Graph {
@@ -94,6 +143,7 @@ export interface Citation {
   ordinal: number;
   note_id: string;
   chunk_id?: string | null;
+  diagram_id?: string | null;
   note_title?: string;
   start_time: number | null;
   end_time: number | null;
@@ -124,10 +174,15 @@ export interface AppSettings {
   app_name: string | null;
   llm_provider: "ollama" | "anthropic";
   ollama_chat_model: string;
+  ollama_fast_model: string | null;
   anthropic_chat_model: string;
   has_anthropic_api_key: boolean;
   embedding_model: string;
+  ollama_vision_model: string | null;
   whisper_model: string;
   whisper_idle_unload_seconds: number;
+  default_rag_top_k: number;
+  default_rag_similarity_floor: number;
+  num_ctx: number;
   updated_at: string;
 }

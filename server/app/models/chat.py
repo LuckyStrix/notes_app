@@ -49,6 +49,9 @@ class Citation(UUIDPKMixin, Base):
     chunk_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("embedding_chunks.id", ondelete="SET NULL")
     )
+    diagram_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("diagrams.id", ondelete="SET NULL")
+    )
     start_time: Mapped[float | None] = mapped_column(Float)
     end_time: Mapped[float | None] = mapped_column(Float)
     page_start: Mapped[int | None] = mapped_column(Integer)

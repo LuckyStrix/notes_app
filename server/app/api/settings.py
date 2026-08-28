@@ -1,5 +1,12 @@
+import asyncio
+import os
+from datetime import datetime, timezone
+from urllib.parse import unquote, urlparse
+
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from ollama import AsyncClient
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings as app_config
@@ -25,11 +32,16 @@ def _to_read(row: AppSettings) -> SettingsRead:
         app_name=row.app_name,
         llm_provider=row.llm_provider,
         ollama_chat_model=row.ollama_chat_model,
+        ollama_fast_model=row.ollama_fast_model,
         anthropic_chat_model=row.anthropic_chat_model,
         has_anthropic_api_key=bool(row.anthropic_api_key),
         embedding_model=row.embedding_model,
+        ollama_vision_model=row.ollama_vision_model,
         whisper_model=row.whisper_model,
         whisper_idle_unload_seconds=row.whisper_idle_unload_seconds,
+        default_rag_top_k=row.default_rag_top_k,
+        default_rag_similarity_floor=row.default_rag_similarity_floor,
+        num_ctx=row.num_ctx,
         updated_at=row.updated_at,
     )
 
@@ -71,3 +83,65 @@ async def list_ollama_models():
         }
         for m in response.models
     ]
+
+
+@router.get("/database-size")
+async def get_database_size(db: AsyncSession = Depends(get_db)):
+    """On-disk size of the whole database -- a rough proxy for how big an
+    export will be, without actually having to run one to find out."""
+    size_bytes = (await db.execute(text("SELECT pg_database_size(current_database())"))).scalar_one()
+    return {"size_bytes": size_bytes}
+
+
+def _pg_dump_command() -> tuple[list[str], dict[str, str]]:
+    """Builds a pg_dump invocation from DATABASE_URL. The password goes
+    through PGPASSWORD (not argv) so it doesn't show up in `docker top`/`ps`
+    output inside the container."""
+    parsed = urlparse(app_config.database_url.replace("postgresql+asyncpg", "postgresql", 1))
+    dbname = parsed.path.lstrip("/")
+    if not parsed.hostname or not dbname:
+        raise HTTPException(status_code=500, detail="DATABASE_URL is missing a host or database name")
+    args = [
+        "pg_dump",
+        "-h", parsed.hostname,
+        "-p", str(parsed.port or 5432),
+        "-U", unquote(parsed.username or ""),
+        dbname,
+    ]
+    env = {**os.environ, "PGPASSWORD": unquote(parsed.password or "")}
+    return args, env
+
+
+@router.get("/database-export")
+async def export_database():
+    """Streams a full `pg_dump` of the database as a downloadable .sql file --
+    an on-demand, UI-triggered alternative to a manual
+    `docker compose exec postgres pg_dump ...` backup."""
+    args, env = _pg_dump_command()
+    process = await asyncio.create_subprocess_exec(
+        *args, env=env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    )
+
+    async def stream():
+        assert process.stdout
+        try:
+            while True:
+                chunk = await process.stdout.read(65536)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            # Headers (200 OK) are already sent by the time any of this runs,
+            # so a failure here can't be turned into a clean HTTP error --
+            # the best that's possible is a truncated download plus a log line.
+            returncode = await process.wait()
+            if returncode != 0 and process.stderr:
+                stderr = (await process.stderr.read()).decode(errors="replace")
+                print(f"pg_dump failed (exit {returncode}): {stderr}")
+
+    filename = f"notes_app_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.sql"
+    return StreamingResponse(
+        stream(),
+        media_type="application/sql",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

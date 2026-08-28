@@ -27,6 +27,13 @@ export default function CitationLink({ projectId, citation }: { projectId: strin
       {citation.start_time !== null && ` @ ${formatTime(citation.start_time)}`}
       {citation.start_time === null && citation.page_start !== null &&
         ` (p. ${citation.page_start === citation.page_end ? citation.page_start : `${citation.page_start}-${citation.page_end}`})`}
+      {citation.diagram_id && (
+        <img
+          className="citation-thumb"
+          src={`/api/notes/${citation.note_id}/diagrams/${citation.diagram_id}/file`}
+          alt="Cited diagram"
+        />
+      )}
     </Link>
   );
 }

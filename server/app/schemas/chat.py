@@ -30,6 +30,7 @@ class CitationRead(BaseModel):
     note_id: uuid.UUID
     note_title: str | None = None
     chunk_id: uuid.UUID | None
+    diagram_id: uuid.UUID | None = None
     start_time: float | None
     end_time: float | None
     page_start: int | None = None

@@ -67,9 +67,13 @@ async def _embed_note(note_id: str) -> None:
                         }
                     )
 
-        # Replace any existing chunks for this note -- keeps re-embedding on
-        # edit/re-transcribe idempotent rather than accumulating stale rows.
-        await db.execute(delete(EmbeddingChunk).where(EmbeddingChunk.note_id == note.id))
+        # Replace any existing note_body/transcript chunks for this note --
+        # keeps re-embedding on edit/re-transcribe idempotent rather than
+        # accumulating stale rows. Diagram chunks are untouched here; they're
+        # only ever replaced by app.jobs.process_diagrams, which owns them.
+        await db.execute(
+            delete(EmbeddingChunk).where(EmbeddingChunk.note_id == note.id, EmbeddingChunk.source != "diagram")
+        )
         await db.flush()
 
         if not chunk_rows:

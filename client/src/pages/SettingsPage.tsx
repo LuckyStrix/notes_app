@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { useOllamaModels, useSettings, useUpdateSettings } from "../api/hooks";
+import { useDatabaseSize, useOllamaModels, useSettings, useUpdateSettings } from "../api/hooks";
 import type { AppSettings } from "../api/types";
 
 const RECOMMENDED_CHAT_MODELS = [
@@ -20,9 +20,22 @@ function bytesToGB(n: number | null): string {
   return n ? `${(n / 1e9).toFixed(1)}GB` : "?";
 }
 
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let value = n / 1024;
+  let i = 0;
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024;
+    i++;
+  }
+  return `${value.toFixed(1)} ${units[i]}`;
+}
+
 export default function SettingsPage() {
   const { data: settings } = useSettings();
   const { data: ollamaModels, error: ollamaError } = useOllamaModels();
+  const { data: databaseSize } = useDatabaseSize();
   const updateSettings = useUpdateSettings();
 
   const [form, setForm] = useState<Partial<AppSettings> & { anthropic_api_key?: string }>({});
@@ -116,6 +129,32 @@ export default function SettingsPage() {
               </tbody>
             </table>
             <p className="muted">Not pulled yet? Run <code>ollama pull &lt;model&gt;</code> on the host.</p>
+
+            <label className="muted">Fast model (keyword graph "Generate all")</label>
+            <input
+              placeholder="e.g. llama3.2:3b-instruct (not pulled yet? ollama pull llama3.2:3b-instruct)"
+              value={form.ollama_fast_model ?? settings.ollama_fast_model ?? ""}
+              onChange={(e) => set("ollama_fast_model", e.target.value)}
+            />
+            <p className="muted">
+              A small, fast model used only for the keyword graph's "Generate all" button, which sweeps every topic
+              and connection in a project to pre-generate a basic summary. Always runs locally via Ollama regardless
+              of the chat provider above. Leave blank to disable that button.
+            </p>
+
+            <label className="muted">Context window (num_ctx)</label>
+            <input
+              type="number"
+              min={1}
+              value={form.num_ctx ?? settings.num_ctx}
+              onChange={(e) => set("num_ctx", Number(e.target.value))}
+            />
+            <p className="muted">
+              How much of the RAG context + chat history the model can see at once. Ollama's own default if unset is
+              only 2048 tokens, which can silently truncate context on longer conversations. Higher values give
+              better-grounded answers at the cost of more VRAM and a slower response — worth raising if you have the
+              headroom.
+            </p>
           </div>
         ) : (
           <div style={{ marginTop: "1rem" }}>
@@ -165,6 +204,72 @@ export default function SettingsPage() {
           Always runs locally via Ollama regardless of the chat provider above (Claude has no embeddings API).
           Changing this requires re-indexing every note — existing embeddings won't match the new model's vector space.
         </p>
+      </section>
+
+      <section className="card">
+        <h2>Diagram captioning</h2>
+        <input
+          placeholder="e.g. qwen2.5vl (not pulled yet? ollama pull qwen2.5vl)"
+          value={form.ollama_vision_model ?? settings.ollama_vision_model ?? ""}
+          onChange={(e) => set("ollama_vision_model", e.target.value)}
+        />
+        <p className="muted">
+          Used only to auto-caption diagrams you save from a PDF or video (see a note's "Diagrams" tab) — always runs
+          locally via Ollama regardless of the chat provider above. Leave blank to skip captioning; saved diagrams
+          are still searchable from their OCR'd text alone.
+        </p>
+      </section>
+
+      <section className="card">
+        <h2>Chat retrieval defaults</h2>
+        <p className="muted">
+          How many note excerpts the AI sees per question, and how relevant one has to be to qualify at all. These
+          are the defaults for every project — a project can override either from its own settings page (via the 🔧
+          link in its sidebar) if it needs more or less context than usual.
+        </p>
+        <div className="form-inline">
+          <label>
+            Context chunk count
+            <input
+              type="number"
+              min={1}
+              max={50}
+              value={form.default_rag_top_k ?? settings.default_rag_top_k}
+              onChange={(e) => set("default_rag_top_k", Number(e.target.value))}
+            />
+          </label>
+          <label>
+            Relevance floor
+            <input
+              type="number"
+              min={0}
+              max={1}
+              step={0.05}
+              value={form.default_rag_similarity_floor ?? settings.default_rag_similarity_floor}
+              onChange={(e) => set("default_rag_similarity_floor", Number(e.target.value))}
+            />
+          </label>
+        </div>
+        <p className="muted">
+          Smaller local models tend to get distracted when too many excerpts are crammed into one answer — if chat
+          starts saying it "can't find" something that's clearly in your notes, try lowering the chunk count first.
+          If answers are missing context that should have matched, try raising the chunk count or lowering the
+          relevance floor instead.
+        </p>
+      </section>
+
+      <section className="card">
+        <h2>Backup</h2>
+        <p className="muted">
+          Download a full snapshot of the database (a <code>pg_dump</code>) as a plain <code>.sql</code> file. Note
+          content, chat history, keyword graphs, and settings are all included — uploaded media files (recordings,
+          documents, diagrams) live on disk separately and aren't part of this export.
+        </p>
+        <p className="muted">
+          Current database size: {databaseSize ? formatBytes(databaseSize.size_bytes) : "…"} (the actual export file
+          is usually somewhat smaller than this).
+        </p>
+        <a href="/api/settings/database-export" className="button-link" download>Export database</a>
       </section>
 
       <button onClick={save} disabled={updateSettings.isPending}>Save settings</button>

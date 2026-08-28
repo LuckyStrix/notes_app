@@ -112,6 +112,7 @@ interface Actions {
   onNewNote: (groupId: string | null) => void;
   onUpload: (groupId: string | null) => void;
   onNewSubfolder: (groupId: string) => void;
+  onRenameGroup: (groupId: string, name: string) => void;
   onDeleteGroup: (groupId: string, name: string) => void;
   onDeleteNote: (noteId: string) => void;
 }
@@ -193,6 +194,11 @@ export default function Sidebar({ projectId }: { projectId: string }) {
     if (name?.trim()) createGroup.mutate({ name: name.trim() });
   }
 
+  function handleRenameGroup(groupId: string, name: string) {
+    const trimmed = name.trim();
+    if (trimmed) updateGroup.mutate({ groupId, payload: { name: trimmed } });
+  }
+
   function handleDeleteGroup(groupId: string, name: string) {
     if (confirm(`Delete folder "${name}"? Notes inside will move to the top level (not deleted).`)) {
       deleteGroup.mutate(groupId);
@@ -209,6 +215,7 @@ export default function Sidebar({ projectId }: { projectId: string }) {
     onNewNote: handleNewNote,
     onUpload: handleUpload,
     onNewSubfolder: handleNewSubfolder,
+    onRenameGroup: handleRenameGroup,
     onDeleteGroup: handleDeleteGroup,
     onDeleteNote: handleDeleteNote,
   };
@@ -295,6 +302,7 @@ export default function Sidebar({ projectId }: { projectId: string }) {
         <NavLink to={`/projects/${projectId}/search`} className="sidebar-footer-link">🔍 Search</NavLink>
         <NavLink to={`/projects/${projectId}/graph`} className="sidebar-footer-link">🕸️ Keyword graph</NavLink>
         <NavLink to={`/projects/${projectId}/chat`} className="sidebar-footer-link">💬 Chat</NavLink>
+        <NavLink to={`/projects/${projectId}/settings`} className="sidebar-footer-link">🔧 Project settings</NavLink>
       </div>
     </>
   );
@@ -321,12 +329,26 @@ function FolderRow({
   const isDragging = drag.dragItem?.kind === "group" && drag.dragItem.id === group.id;
   const isDropTarget = drag.dropTarget === group.id;
 
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState(group.name);
+
+  function startRename() {
+    setRenameValue(group.name);
+    setIsRenaming(true);
+  }
+
+  function commitRename() {
+    setIsRenaming(false);
+    const trimmed = renameValue.trim();
+    if (trimmed && trimmed !== group.name) actions.onRenameGroup(group.id, trimmed);
+  }
+
   return (
     <div className="tree-node">
       <div
         className={`tree-row tree-folder${isDragging ? " dragging" : ""}${isDropTarget ? " drop-target" : ""}`}
-        onClick={() => onToggle(group.id)}
-        draggable
+        onClick={() => !isRenaming && onToggle(group.id)}
+        draggable={!isRenaming}
         onDragStart={(e) => {
           e.dataTransfer.effectAllowed = "move";
           e.dataTransfer.setData("text/plain", group.id);
@@ -339,11 +361,33 @@ function FolderRow({
       >
         <span className="tree-chevron">{isCollapsed ? "▸" : "▾"}</span>
         <span className="tree-icon">📁</span>
-        <span className="tree-label">{group.name}</span>
+        {isRenaming ? (
+          <input
+            className="tree-label-input"
+            value={renameValue}
+            autoFocus
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onFocus={(e) => e.target.select()}
+            onBlur={commitRename}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") e.currentTarget.blur();
+              else if (e.key === "Escape") {
+                setRenameValue(group.name);
+                setIsRenaming(false);
+              }
+            }}
+          />
+        ) : (
+          <span className="tree-label" onDoubleClick={(e) => { e.stopPropagation(); startRename(); }}>
+            {group.name}
+          </span>
+        )}
         <span className="tree-row-actions" onClick={(e) => e.stopPropagation()}>
           <button className="icon-btn" title="New note here" onClick={() => actions.onNewNote(group.id)}>📄+</button>
           <button className="icon-btn" title="Upload recording or document here" onClick={() => actions.onUpload(group.id)}>📤</button>
           <button className="icon-btn" title="New subfolder" onClick={() => actions.onNewSubfolder(group.id)}>📁+</button>
+          <button className="icon-btn" title="Rename folder" onClick={startRename}>✏️</button>
           <button className="icon-btn" title="Delete folder" onClick={() => actions.onDeleteGroup(group.id, group.name)}>✕</button>
         </span>
       </div>

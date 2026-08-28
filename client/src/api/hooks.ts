@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "./client";
-import type { AppSettings, ChatMessage, ChatSession, Graph, GraphSummary, Group, Note, NoteFile, NoteType, Project, SearchResult, Transcript } from "./types";
+import type { AppSettings, ChatMessage, ChatSession, Diagram, DiagramCandidate, Graph, GraphSummary, Group, Note, NoteFile, NoteType, NoteVersion, Project, SearchResult, Transcript } from "./types";
 
 // Projects
 
@@ -14,6 +14,13 @@ export function useProject(projectId: string | undefined) {
     queryKey: ["projects", projectId],
     queryFn: () => api.get<Project>(`/projects/${projectId}`),
     enabled: !!projectId,
+    // Self-polls while a graph rebuild or a "Generate All" summary batch is
+    // in flight (mirrors Note.status polling elsewhere) so callers don't
+    // need to know in advance whether one is running.
+    refetchInterval: (query) =>
+      query.state.data?.graph_status === "processing" || query.state.data?.summary_generation_status === "processing"
+        ? 2000
+        : false,
   });
 }
 
@@ -22,6 +29,49 @@ export function useCreateProject() {
   return useMutation({
     mutationFn: (payload: { name: string; description?: string }) => api.post<Project>("/projects", payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["projects"] }),
+  });
+}
+
+export function useUpdateProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      projectId,
+      payload,
+    }: {
+      projectId: string;
+      payload: {
+        name?: string;
+        description?: string | null;
+        rag_top_k?: number | null;
+        rag_similarity_floor?: number | null;
+      };
+    }) => api.patch<Project>(`/projects/${projectId}`, payload),
+    onSuccess: (_data, { projectId }) => {
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["projects", projectId] });
+    },
+  });
+}
+
+export function useReorderProjects() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (projectIds: string[]) => api.patch<Project[]>("/projects/reorder", { project_ids: projectIds }),
+    onMutate: async (projectIds) => {
+      await qc.cancelQueries({ queryKey: ["projects"] });
+      const previous = qc.getQueryData<Project[]>(["projects"]);
+      if (previous) {
+        const byId = new Map(previous.map((p) => [p.id, p]));
+        const reordered = projectIds.map((id) => byId.get(id)).filter((p): p is Project => !!p);
+        qc.setQueryData(["projects"], reordered);
+      }
+      return { previous };
+    },
+    onError: (_err, _projectIds, context) => {
+      if (context?.previous) qc.setQueryData(["projects"], context.previous);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["projects"] }),
   });
 }
 
@@ -108,11 +158,33 @@ export function useUpdateNote(projectId: string) {
       payload,
     }: {
       noteId: string;
-      payload: { title?: string; body?: string; group_id?: string | null };
+      payload: { title?: string; body?: string; group_id?: string | null; force_version?: boolean };
     }) => api.patch<Note>(`/notes/${noteId}`, payload),
     onSuccess: (_data, { noteId }) => {
       qc.invalidateQueries({ queryKey: ["notes", { projectId }] });
       qc.invalidateQueries({ queryKey: ["notes", noteId] });
+      qc.invalidateQueries({ queryKey: ["notes", noteId, "versions"] });
+    },
+  });
+}
+
+export function useNoteVersions(noteId: string | undefined) {
+  return useQuery({
+    queryKey: ["notes", noteId, "versions"],
+    queryFn: () => api.get<NoteVersion[]>(`/notes/${noteId}/versions`),
+    enabled: !!noteId,
+  });
+}
+
+export function useRestoreNoteVersion(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ noteId, versionId }: { noteId: string; versionId: string }) =>
+      api.post<Note>(`/notes/${noteId}/versions/${versionId}/restore`, {}),
+    onSuccess: (_data, { noteId }) => {
+      qc.invalidateQueries({ queryKey: ["notes", { projectId }] });
+      qc.invalidateQueries({ queryKey: ["notes", noteId] });
+      qc.invalidateQueries({ queryKey: ["notes", noteId, "versions"] });
     },
   });
 }
@@ -159,6 +231,55 @@ export function useUploadMedia() {
   });
 }
 
+// Diagrams
+
+export function useGenerateDiagramCandidates(noteId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post(`/notes/${noteId}/diagrams/generate-candidates`, {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["notes", noteId, "file"] });
+      qc.invalidateQueries({ queryKey: ["notes", noteId, "diagram-candidates"] });
+    },
+  });
+}
+
+export function useDiagramCandidates(noteId: string | undefined, opts?: { poll?: boolean }) {
+  return useQuery({
+    queryKey: ["notes", noteId, "diagram-candidates"],
+    queryFn: () => api.get<DiagramCandidate[]>(`/notes/${noteId}/diagrams/candidates`),
+    enabled: !!noteId,
+    refetchInterval: opts?.poll ? 3000 : false,
+  });
+}
+
+export function useSaveDiagrams(noteId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (candidateIds: string[]) =>
+      api.post<Diagram[]>(`/notes/${noteId}/diagrams`, { candidate_ids: candidateIds }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notes", noteId, "diagrams"] }),
+  });
+}
+
+export function useDiagrams(noteId: string | undefined) {
+  return useQuery({
+    queryKey: ["notes", noteId, "diagrams"],
+    queryFn: () => api.get<Diagram[]>(`/notes/${noteId}/diagrams`),
+    enabled: !!noteId,
+    // Self-polls while any diagram is still being OCR'd/captioned.
+    refetchInterval: (query) => (query.state.data?.some((d) => d.status === "processing") ? 3000 : false),
+  });
+}
+
+export function useDeleteDiagram(noteId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (diagramId: string) => api.delete(`/notes/${noteId}/diagrams/${diagramId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notes", noteId, "diagrams"] }),
+  });
+}
+
 // Graph
 
 export function useGraph(projectId: string | undefined, significance: number) {
@@ -175,8 +296,7 @@ export function useKeywordSummary(projectId: string | undefined, keywordId: stri
     queryKey: ["graph-summary", "keyword", projectId, keywordId],
     queryFn: () => api.get<GraphSummary>(`/projects/${projectId}/graph/keywords/${keywordId}/summary`),
     enabled: !!projectId && !!keywordId,
-    staleTime: Infinity, // avoid re-triggering an LLM call just because the query remounted
-    retry: false,
+    retry: false, // a fresh graph rebuild can make a previously-selected id 404 briefly
   });
 }
 
@@ -185,14 +305,43 @@ export function useEdgeSummary(projectId: string | undefined, source: string | u
     queryKey: ["graph-summary", "edge", projectId, source, target],
     queryFn: () => api.get<GraphSummary>(`/projects/${projectId}/graph/edges/summary?source=${source}&target=${target}`),
     enabled: !!projectId && !!source && !!target,
-    staleTime: Infinity,
     retry: false,
   });
 }
 
+export function useGenerateKeywordQualitySummary(projectId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (keywordId: string) =>
+      api.post<GraphSummary>(`/projects/${projectId}/graph/keywords/${keywordId}/summary/quality`, {}),
+    onSuccess: (data, keywordId) =>
+      qc.setQueryData(["graph-summary", "keyword", projectId, keywordId], data),
+  });
+}
+
+export function useGenerateEdgeQualitySummary(projectId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ source, target }: { source: string; target: string }) =>
+      api.post<GraphSummary>(`/projects/${projectId}/graph/edges/summary/quality?source=${source}&target=${target}`, {}),
+    onSuccess: (data, { source, target }) =>
+      qc.setQueryData(["graph-summary", "edge", projectId, source, target], data),
+  });
+}
+
+export function useGenerateAllSummaries(projectId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<{ status: string; total: number }>(`/projects/${projectId}/graph/summaries/generate-all`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["projects", projectId] }),
+  });
+}
+
 export function useRebuildGraph(projectId: string | undefined) {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: () => api.post(`/projects/${projectId}/graph/rebuild`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["projects", projectId] }),
   });
 }
 
@@ -275,5 +424,12 @@ export function useOllamaModels() {
     queryKey: ["settings", "ollama-models"],
     queryFn: () => api.get<OllamaModel[]>("/settings/ollama-models"),
     retry: false,
+  });
+}
+
+export function useDatabaseSize() {
+  return useQuery({
+    queryKey: ["settings", "database-size"],
+    queryFn: () => api.get<{ size_bytes: number }>("/settings/database-size"),
   });
 }

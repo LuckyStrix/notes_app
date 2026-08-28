@@ -5,6 +5,7 @@ import { useSettings } from "./api/hooks";
 import ChatPage from "./pages/ChatPage";
 import GraphPage from "./pages/GraphPage";
 import NoteViewerPage from "./pages/NoteViewerPage";
+import ProjectSettingsPage from "./pages/ProjectSettingsPage";
 import ProjectWorkspacePage from "./pages/ProjectWorkspacePage";
 import ProjectsPage from "./pages/ProjectsPage";
 import SearchPage from "./pages/SearchPage";
@@ -40,6 +41,7 @@ export default function App() {
             <Route path="chat" element={<ChatPage />} />
             <Route path="graph" element={<GraphPage />} />
             <Route path="search" element={<SearchPage />} />
+            <Route path="settings" element={<ProjectSettingsPage />} />
           </Route>
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>

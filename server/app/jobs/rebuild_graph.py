@@ -7,6 +7,7 @@ from sqlalchemy.orm import aliased
 
 from app.db import async_session
 from app.models.keyword import Keyword, KeywordEdge, NoteKeyword
+from app.models.project import Project
 from app.services.graph_significance import SIMILARITY_FLOOR, build_cooccurrence, merge_edges, score_edges, score_nodes
 
 
@@ -14,58 +15,78 @@ def rebuild_project_graph(project_id: str) -> None:
     asyncio.run(_rebuild_project_graph(project_id))
 
 
+async def _mark_graph_status(project_id: uuid.UUID, status: str, error: str | None = None) -> None:
+    async with async_session() as db:
+        project = await db.get(Project, project_id)
+        if not project:
+            return
+        project.graph_status = status
+        project.graph_error = error
+        if status == "ready":
+            project.graph_updated_at = func.now()
+        await db.commit()
+
+
 async def _rebuild_project_graph(project_id: str) -> None:
     pid = uuid.UUID(project_id)
+    await _mark_graph_status(pid, "processing")
 
-    async with async_session() as db:
-        keywords_result = await db.execute(select(Keyword).where(Keyword.project_id == pid))
-        keywords = keywords_result.scalars().all()
-        if not keywords:
-            return
-        keyword_ids = [k.id for k in keywords]
+    try:
+        async with async_session() as db:
+            keywords_result = await db.execute(select(Keyword).where(Keyword.project_id == pid))
+            keywords = keywords_result.scalars().all()
+            if not keywords:
+                await db.commit()
+            else:
+                keyword_ids = [k.id for k in keywords]
 
-        nk_result = await db.execute(select(NoteKeyword.note_id, NoteKeyword.keyword_id).where(NoteKeyword.keyword_id.in_(keyword_ids)))
-        note_to_keywords: dict[uuid.UUID, set[uuid.UUID]] = defaultdict(set)
-        note_frequency: dict[uuid.UUID, int] = defaultdict(int)
-        for note_id, keyword_id in nk_result.all():
-            note_to_keywords[note_id].add(keyword_id)
-            note_frequency[keyword_id] += 1
+                nk_result = await db.execute(select(NoteKeyword.note_id, NoteKeyword.keyword_id).where(NoteKeyword.keyword_id.in_(keyword_ids)))
+                note_to_keywords: dict[uuid.UUID, set[uuid.UUID]] = defaultdict(set)
+                note_frequency: dict[uuid.UUID, int] = defaultdict(int)
+                for note_id, keyword_id in nk_result.all():
+                    note_to_keywords[note_id].add(keyword_id)
+                    note_frequency[keyword_id] += 1
 
-        cooccurrence = build_cooccurrence(note_to_keywords)
+                cooccurrence = build_cooccurrence(note_to_keywords)
 
-        KA, KB = aliased(Keyword), aliased(Keyword)
-        similarity_expr = 1 - KA.embedding.cosine_distance(KB.embedding)
-        sim_stmt = (
-            select(KA.id, KB.id, similarity_expr)
-            .where(KA.project_id == pid, KB.project_id == pid, KA.id < KB.id)
-            .where(similarity_expr >= SIMILARITY_FLOOR)
-        )
-        sim_result = await db.execute(sim_stmt)
-        similarities = list(sim_result.all())
-
-        edges = merge_edges(cooccurrence, similarities)
-        edge_significance = score_edges(edges)
-        node_significance = score_nodes(keyword_ids, note_frequency, edges)
-
-        await db.execute(delete(KeywordEdge).where(KeywordEdge.project_id == pid))
-        await db.flush()
-
-        for (a, b), data in edges.items():
-            db.add(
-                KeywordEdge(
-                    project_id=pid,
-                    source_keyword_id=a,
-                    target_keyword_id=b,
-                    cooccurrence_count=data["cooccurrence_count"],
-                    embedding_similarity=data["embedding_similarity"],
-                    significance=edge_significance[(a, b)],
+                KA, KB = aliased(Keyword), aliased(Keyword)
+                similarity_expr = 1 - KA.embedding.cosine_distance(KB.embedding)
+                sim_stmt = (
+                    select(KA.id, KB.id, similarity_expr)
+                    .where(KA.project_id == pid, KB.project_id == pid, KA.id < KB.id)
+                    .where(similarity_expr >= SIMILARITY_FLOOR)
                 )
-            )
+                sim_result = await db.execute(sim_stmt)
+                similarities = list(sim_result.all())
 
-        for kw in keywords:
-            kw.significance = node_significance.get(kw.id, 0.0)
+                edges = merge_edges(cooccurrence, similarities)
+                edge_significance = score_edges(edges)
+                node_significance = score_nodes(keyword_ids, note_frequency, edges)
 
-        await db.commit()
+                await db.execute(delete(KeywordEdge).where(KeywordEdge.project_id == pid))
+                await db.flush()
+
+                for (a, b), data in edges.items():
+                    db.add(
+                        KeywordEdge(
+                            project_id=pid,
+                            source_keyword_id=a,
+                            target_keyword_id=b,
+                            cooccurrence_count=data["cooccurrence_count"],
+                            embedding_similarity=data["embedding_similarity"],
+                            significance=edge_significance[(a, b)],
+                        )
+                    )
+
+                for kw in keywords:
+                    kw.significance = node_significance.get(kw.id, 0.0)
+
+                await db.commit()
+    except Exception as exc:
+        await _mark_graph_status(pid, "error", str(exc))
+        raise
+    else:
+        await _mark_graph_status(pid, "ready")
 
 
 def rebuild_project_graph_incremental(

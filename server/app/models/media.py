@@ -1,6 +1,7 @@
 import uuid
+from datetime import datetime
 
-from sqlalchemy import ForeignKey, Integer, Float, String, Text, UniqueConstraint, BigInteger
+from sqlalchemy import DateTime, ForeignKey, Integer, Float, String, Text, UniqueConstraint, BigInteger
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -19,6 +20,11 @@ class NoteFile(UUIDPKMixin, TimestampMixin, Base):
     mime_type: Mapped[str | None] = mapped_column(String(128))
     duration_seconds: Mapped[float | None] = mapped_column(Float)
     size_bytes: Mapped[int | None] = mapped_column(BigInteger)
+    # Tracks app.jobs.extract_diagrams.generate_diagram_candidates, mirroring
+    # Note.status -- null means "never run for this file".
+    candidate_status: Mapped[str | None] = mapped_column(String(20))
+    candidate_error: Mapped[str | None] = mapped_column(Text)
+    candidates_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Transcript(UUIDPKMixin, Base):

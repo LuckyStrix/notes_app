@@ -12,6 +12,7 @@ from app.llm.base import Message
 from app.llm.factory import get_active_provider
 from app.models.chat import ChatMessage, ChatSession, Citation
 from app.models.note import Note
+from app.models.project import Project
 from app.models.settings import AppSettings
 from app.schemas.chat import ChatMessageCreate, ChatMessageRead, ChatSessionCreate, ChatSessionRead
 from app.services.rag import (
@@ -20,6 +21,7 @@ from app.services.rag import (
     build_context_block,
     build_system_prompt,
     generate_llm_text,
+    resolve_rag_settings,
     retrieve_chunks,
 )
 
@@ -109,6 +111,8 @@ async def post_message(session_id: uuid.UUID, payload: ChatMessageCreate, db: As
 
     app_settings = await db.get(AppSettings, 1)
     embedding_model = app_settings.embedding_model if app_settings else "nomic-embed-text"
+    project = await db.get(Project, session.project_id) if session.project_id else None
+    top_k, similarity_floor = resolve_rag_settings(project, app_settings)
 
     db.add(ChatMessage(session_id=session_id, role="user", content=payload.content))
     await db.commit()
@@ -119,6 +123,8 @@ async def post_message(session_id: uuid.UUID, payload: ChatMessageCreate, db: As
         project_id=session.project_id,
         group_id=payload.group_id,
         embedding_model=embedding_model,
+        top_k=top_k,
+        similarity_floor=similarity_floor,
     )
     system_prompt = build_system_prompt(build_context_block(rows))
 
@@ -151,6 +157,7 @@ async def post_message(session_id: uuid.UUID, payload: ChatMessageCreate, db: As
                     message_id=assistant_message.id,
                     note_id=uuid.UUID(citation["note_id"]),
                     chunk_id=uuid.UUID(citation["chunk_id"]),
+                    diagram_id=uuid.UUID(citation["diagram_id"]) if citation["diagram_id"] else None,
                     start_time=citation["start_time"],
                     end_time=citation["end_time"],
                     page_start=citation["page_start"],

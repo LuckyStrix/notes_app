@@ -8,8 +8,9 @@ from app.llm.base import LLMProvider, Message, SchemaT
 
 
 class OllamaProvider(LLMProvider):
-    def __init__(self, model: str):
+    def __init__(self, model: str, num_ctx: int = 8192):
         self._model = model
+        self._num_ctx = num_ctx
         self._client = AsyncClient(host=settings.ollama_base_url)
 
     def model_name(self) -> str:
@@ -21,7 +22,9 @@ class OllamaProvider(LLMProvider):
             ollama_messages.append({"role": "system", "content": system})
         ollama_messages.extend({"role": m.role, "content": m.content} for m in messages)
 
-        stream = await self._client.chat(model=self._model, messages=ollama_messages, stream=True)
+        stream = await self._client.chat(
+            model=self._model, messages=ollama_messages, stream=True, options={"num_ctx": self._num_ctx}
+        )
         async for chunk in stream:
             content = chunk.get("message", {}).get("content", "")
             if content:
@@ -43,6 +46,7 @@ class OllamaProvider(LLMProvider):
                 messages=[{"role": "user", "content": instructions}],
                 format=schema_json,
                 stream=False,
+                options={"num_ctx": self._num_ctx},
             )
             raw = response["message"]["content"]
             try:

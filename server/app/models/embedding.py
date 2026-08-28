@@ -13,7 +13,7 @@ EMBEDDING_DIM = 768  # nomic-embed-text default; changing embedding model requir
 
 class EmbeddingChunk(UUIDPKMixin, TimestampMixin, Base):
     __tablename__ = "embedding_chunks"
-    __table_args__ = (CheckConstraint("source IN ('note_body','transcript')", name="ck_chunk_source"),)
+    __table_args__ = (CheckConstraint("source IN ('note_body','transcript','diagram')", name="ck_chunk_source"),)
 
     note_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("notes.id", ondelete="CASCADE"), nullable=False
@@ -31,5 +31,8 @@ class EmbeddingChunk(UUIDPKMixin, TimestampMixin, Base):
     )
     page_start: Mapped[int | None] = mapped_column(Integer)
     page_end: Mapped[int | None] = mapped_column(Integer)
+    diagram_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("diagrams.id", ondelete="CASCADE")
+    )
     embedding: Mapped[list[float]] = mapped_column(Vector(EMBEDDING_DIM), nullable=False)
     embedding_model: Mapped[str] = mapped_column(String(64), nullable=False)

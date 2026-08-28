@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import chat, graph, groups, media, notes, projects, search, settings as settings_api
+from app.api import chat, diagrams, graph, groups, media, notes, projects, search, settings as settings_api
 
 app = FastAPI(title="notes_app API")
 
@@ -18,6 +18,7 @@ app.include_router(projects.router)
 app.include_router(groups.router)
 app.include_router(notes.router)
 app.include_router(media.router)
+app.include_router(diagrams.router)
 app.include_router(settings_api.router)
 app.include_router(chat.router)
 app.include_router(graph.router)

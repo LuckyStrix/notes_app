@@ -11,6 +11,7 @@ import {
 } from "../api/hooks";
 import type { Citation, Group } from "../api/types";
 import CitationLink from "../components/chat/CitationLink";
+import MarkdownContent from "../components/MarkdownContent";
 
 interface DisplayMessage {
   id: string;
@@ -182,9 +183,11 @@ export default function ChatPage() {
         {messages.length === 0 && <p className="muted">No messages yet. Ask something below.</p>}
         {messages.map((m) => (
           <div key={m.id} className={`chat-message chat-${m.role}`}>
-            <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>
-              {m.content || (streaming && m.role === "assistant" ? "…" : "")}
-            </p>
+            {m.content ? (
+              <MarkdownContent content={m.content} />
+            ) : (
+              <p style={{ margin: 0 }}>{streaming && m.role === "assistant" ? "…" : ""}</p>
+            )}
             {m.citations.length > 0 && (
               <div className="citation-list">
                 {m.citations.map((c) => (

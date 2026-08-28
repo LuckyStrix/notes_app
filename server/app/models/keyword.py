@@ -1,7 +1,8 @@
 import uuid
+from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -21,6 +22,16 @@ class Keyword(UUIDPKMixin, Base):
     normalized_label: Mapped[str] = mapped_column(String(255), nullable=False)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM))
     significance: Mapped[float] = mapped_column(Float, nullable=False, server_default="0")
+
+    # Persisted graph-summary tiers (server.app.api.graph) -- basic comes from
+    # the fast/notes-only "Generate All" batch job, quality from the existing
+    # RAG-grounded pipeline triggered per-node. NULL means "not generated yet".
+    basic_summary: Mapped[str | None] = mapped_column(Text)
+    basic_summary_citations: Mapped[list | None] = mapped_column(JSON)
+    basic_summary_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    quality_summary: Mapped[str | None] = mapped_column(Text)
+    quality_summary_citations: Mapped[list | None] = mapped_column(JSON)
+    quality_summary_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class NoteKeyword(Base):
@@ -51,3 +62,10 @@ class KeywordEdge(UUIDPKMixin, Base):
     cooccurrence_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     embedding_similarity: Mapped[float | None] = mapped_column(Float)
     significance: Mapped[float] = mapped_column(Float, nullable=False, server_default="0")
+
+    basic_summary: Mapped[str | None] = mapped_column(Text)
+    basic_summary_citations: Mapped[list | None] = mapped_column(JSON)
+    basic_summary_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    quality_summary: Mapped[str | None] = mapped_column(Text)
+    quality_summary_citations: Mapped[list | None] = mapped_column(JSON)
+    quality_summary_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

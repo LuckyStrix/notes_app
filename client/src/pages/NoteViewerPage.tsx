@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
 import { useLocation, useParams } from "react-router-dom";
 
-import { useNote, useNoteFile, useTranscript, useUpdateNote, useUploadMedia } from "../api/hooks";
+import { useNote, useNoteFile, useNoteVersions, useRestoreNoteVersion, useTranscript, useUpdateNote, useUploadMedia } from "../api/hooks";
 import MediaPlayer, { type MediaPlayerHandle } from "../components/player/MediaPlayer";
 import TranscriptView from "../components/player/TranscriptView";
+import NoteHistoryPanel from "../components/notes/NoteHistoryPanel";
+import DiagramGallery from "../components/diagrams/DiagramGallery";
 
 const DOCUMENT_ACCEPT = ".pdf,.doc,.docx,.txt,.md";
 const AUTOSAVE_DELAY_MS = 800;
@@ -29,9 +31,16 @@ export default function NoteViewerPage() {
   const showStatusBadge = note?.type !== "text";
 
   const { data: noteFile } = useNoteFile(isMedia || isDocument ? noteId : undefined, { poll: isProcessing });
+  const isPdf = (noteFile?.original_filename ?? "").toLowerCase().endsWith(".pdf");
+  // Diagram extraction only makes sense for a PDF's pages/images or a
+  // video's frames -- docx/txt and audio have no visual content to scan.
+  const showDiagramsTab = (isDocument && isPdf) || note?.type === "video";
   const { data: transcript } = useTranscript(isMedia && note?.status === "ready" ? noteId : undefined);
   const uploadMedia = useUploadMedia();
   const updateNote = useUpdateNote(projectId!);
+  const restoreVersion = useRestoreNoteVersion(projectId!);
+  const { data: versions } = useNoteVersions(noteId);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -39,12 +48,20 @@ export default function NoteViewerPage() {
   // "extracted" = transcript / extracted text (the default); "original" = the
   // uploaded file itself (video player front-and-center, or the raw
   // PDF/text file inline instead of what was pulled out of it).
-  const [viewMode, setViewMode] = useState<"extracted" | "original">("extracted");
+  const [viewMode, setViewMode] = useState<"extracted" | "original" | "diagrams">("extracted");
   const playerRef = useRef<MediaPlayerHandle>(null);
   const documentBodyRef = useRef<HTMLTextAreaElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const titleSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bodySaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Mirrors of the latest title/body, kept current every render so the
+  // unmount-cleanup effect below (deliberately scoped to [noteId] only, so it
+  // doesn't re-fire on every keystroke) can still flush the *latest* values
+  // instead of whatever was in scope when it was set up.
+  const latestTitle = useRef(title);
+  latestTitle.current = title;
+  const latestBody = useRef(body);
+  latestBody.current = body;
 
   // Reset the local draft only when switching to a *different* note, not on
   // every background refetch (e.g. status polling) -- otherwise unsaved
@@ -112,24 +129,69 @@ export default function NoteViewerPage() {
   }, [isDocument, note?.status, note?.body, location.hash]);
 
   // Flush any pending debounced save immediately when leaving the page
-  // (route change, tab close) so a save never just gets silently dropped.
+  // (route change) so a save never just gets silently dropped. Reads from
+  // the latestTitle/latestBody refs above, not the title/body closed over
+  // when this effect was set up -- otherwise a route change more than one
+  // render after the last keystroke would flush stale values.
   useEffect(() => {
     return () => {
-      if (titleSaveTimer.current) clearTimeout(titleSaveTimer.current);
-      if (bodySaveTimer.current) clearTimeout(bodySaveTimer.current);
+      if (titleSaveTimer.current) {
+        clearTimeout(titleSaveTimer.current);
+        flushTitleSave(latestTitle.current, true);
+      }
+      if (bodySaveTimer.current) {
+        clearTimeout(bodySaveTimer.current);
+        flushBodySave(latestBody.current, true);
+      }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noteId]);
+
+  // Tab-close/backgrounding safety net: a normal fetch-based mutation can be
+  // cancelled mid-flight on unload, so this uses navigator.sendBeacon (fire-
+  // and-forget, survives the page going away) against a dedicated endpoint
+  // instead of the regular useUpdateNote mutation path.
+  useEffect(() => {
+    function flushViaBeacon() {
+      if (!note || !noteId) return;
+      const payload: Record<string, unknown> = { force_version: true };
+      let hasChanges = false;
+      const trimmedTitle = title.trim() || "Untitled";
+      if (trimmedTitle !== note.title) {
+        payload.title = trimmedTitle;
+        hasChanges = true;
+      }
+      if (body !== (note.body ?? "")) {
+        payload.body = body;
+        hasChanges = true;
+      }
+      if (!hasChanges) return;
+      const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+      navigator.sendBeacon(`/api/notes/${noteId}/autosave-beacon`, blob);
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "hidden") flushViaBeacon();
+    }
+
+    window.addEventListener("beforeunload", flushViaBeacon);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("beforeunload", flushViaBeacon);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [note, noteId, title, body]);
 
   if (!note || !noteId) return null;
 
-  function flushTitleSave(value: string) {
+  function flushTitleSave(value: string, force = false) {
     if (titleSaveTimer.current) {
       clearTimeout(titleSaveTimer.current);
       titleSaveTimer.current = null;
     }
     const trimmed = value.trim() || "Untitled";
     if (trimmed !== note!.title) {
-      updateNote.mutate({ noteId: noteId!, payload: { title: trimmed } });
+      updateNote.mutate({ noteId: noteId!, payload: { title: trimmed, force_version: force } });
     }
   }
 
@@ -142,20 +204,20 @@ export default function NoteViewerPage() {
   function handleTitleBlur() {
     const trimmed = title.trim() || "Untitled";
     setTitle(trimmed);
-    flushTitleSave(trimmed);
+    flushTitleSave(trimmed, true);
   }
 
   function handleTitleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter") e.currentTarget.blur();
   }
 
-  function flushBodySave(value: string) {
+  function flushBodySave(value: string, force = false) {
     if (bodySaveTimer.current) {
       clearTimeout(bodySaveTimer.current);
       bodySaveTimer.current = null;
     }
     if (value !== (note!.body ?? "")) {
-      updateNote.mutate({ noteId: noteId!, payload: { body: value } });
+      updateNote.mutate({ noteId: noteId!, payload: { body: value, force_version: force } });
     }
   }
 
@@ -175,15 +237,38 @@ export default function NoteViewerPage() {
 
   return (
     <div className="note-viewer">
-      <input
-        ref={titleRef}
-        className="note-title-input"
-        value={title}
-        onChange={(e) => handleTitleChange(e.target.value)}
-        onBlur={handleTitleBlur}
-        onKeyDown={handleTitleKeyDown}
-        placeholder="Untitled"
-      />
+      <div className="note-title-row">
+        <input
+          ref={titleRef}
+          className="note-title-input"
+          value={title}
+          onChange={(e) => handleTitleChange(e.target.value)}
+          onBlur={handleTitleBlur}
+          onKeyDown={handleTitleKeyDown}
+          placeholder="Untitled"
+        />
+        <button
+          type="button"
+          className="icon-btn"
+          title="Version history"
+          onClick={() => setHistoryOpen((v) => !v)}
+        >
+          🕘 History
+        </button>
+      </div>
+
+      {historyOpen && (
+        <NoteHistoryPanel
+          versions={versions ?? []}
+          onRestore={(versionId) => {
+            if (confirm("Restore this version? Your current title/body will be saved as a new version first.")) {
+              restoreVersion.mutate({ noteId: noteId!, versionId });
+            }
+          }}
+          onClose={() => setHistoryOpen(false)}
+        />
+      )}
+
       {showStatusBadge && (
         <div className="note-meta-row">
           <span className={`badge badge-${note.status}`}>{note.status}</span>
@@ -198,7 +283,7 @@ export default function NoteViewerPage() {
             value={body}
             placeholder="Start writing…"
             onChange={(e) => handleBodyChange(e.target.value)}
-            onBlur={() => flushBodySave(body)}
+            onBlur={() => flushBodySave(body, true)}
           />
         )}
 
@@ -219,6 +304,11 @@ export default function NoteViewerPage() {
                   <button className={viewMode === "original" ? "active" : ""} onClick={() => setViewMode("original")}>
                     Original file
                   </button>
+                  {showDiagramsTab && (
+                    <button className={viewMode === "diagrams" ? "active" : ""} onClick={() => setViewMode("diagrams")}>
+                      Diagrams
+                    </button>
+                  )}
                 </div>
 
                 {viewMode === "extracted" ? (
@@ -230,10 +320,12 @@ export default function NoteViewerPage() {
                         className="note-body-textarea"
                         value={body}
                         onChange={(e) => handleBodyChange(e.target.value)}
-                        onBlur={() => flushBodySave(body)}
+                        onBlur={() => flushBodySave(body, true)}
                       />
                     )}
                   </>
+                ) : viewMode === "diagrams" ? (
+                  <DiagramGallery noteId={noteId} candidateStatus={noteFile.candidate_status} />
                 ) : canPreviewInline(noteFile.original_filename) ? (
                   <iframe src={fileUrl} title={noteFile.original_filename ?? "document"} className="document-frame" />
                 ) : (
@@ -281,25 +373,36 @@ export default function NoteViewerPage() {
                   <button className={viewMode === "original" ? "active" : ""} onClick={() => setViewMode("original")}>
                     Original {note.type}
                   </button>
+                  {showDiagramsTab && (
+                    <button className={viewMode === "diagrams" ? "active" : ""} onClick={() => setViewMode("diagrams")}>
+                      Diagrams
+                    </button>
+                  )}
                 </div>
 
-                <MediaPlayer
-                  ref={playerRef}
-                  noteId={noteId}
-                  type={note.type as "audio" | "video"}
-                  onTimeUpdate={setCurrentTime}
-                />
-                <p className="muted" style={{ marginTop: "0.5rem" }}>
-                  {noteFile.original_filename}
-                  {noteFile.duration_seconds ? ` · ${Math.round(noteFile.duration_seconds)}s` : ""}
-                </p>
-                {isProcessing && <p className="muted">Transcribing… this page will update automatically.</p>}
-                {viewMode === "extracted" && transcript && (
-                  <TranscriptView
-                    segments={transcript.segments}
-                    currentTime={currentTime}
-                    onSeek={(t) => playerRef.current?.seekTo(t)}
-                  />
+                {viewMode === "diagrams" ? (
+                  <DiagramGallery noteId={noteId} candidateStatus={noteFile.candidate_status} />
+                ) : (
+                  <>
+                    <MediaPlayer
+                      ref={playerRef}
+                      noteId={noteId}
+                      type={note.type as "audio" | "video"}
+                      onTimeUpdate={setCurrentTime}
+                    />
+                    <p className="muted" style={{ marginTop: "0.5rem" }}>
+                      {noteFile.original_filename}
+                      {noteFile.duration_seconds ? ` · ${Math.round(noteFile.duration_seconds)}s` : ""}
+                    </p>
+                    {isProcessing && <p className="muted">Transcribing… this page will update automatically.</p>}
+                    {viewMode === "extracted" && transcript && (
+                      <TranscriptView
+                        segments={transcript.segments}
+                        currentTime={currentTime}
+                        onSeek={(t) => playerRef.current?.seekTo(t)}
+                      />
+                    )}
+                  </>
                 )}
                 <div style={{ marginTop: "1rem" }}>
                   <label className="muted">Replace file: </label>

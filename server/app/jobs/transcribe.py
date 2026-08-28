@@ -89,11 +89,31 @@ async def _transcribe_note(note_id: str) -> None:
 
 
 def _run_whisper(file_path: str, model_name: str):
-    """Blocking faster-whisper call -- runs in a worker thread via asyncio.to_thread."""
+    """Blocking faster-whisper call -- runs in a worker thread via asyncio.to_thread.
+
+    vad_filter is deliberately off. It sounds like the right tool for "quiet
+    recording produces no transcript," but measured against a real quiet
+    lecture recording that came back with zero segments, Silero VAD (the
+    filter faster-whisper applies) was the actual cause -- it discarded most
+    of the genuine speech throughout the file as "not speech," at every
+    onset threshold tried (default 0.5 down to 0.2). With vad_filter off,
+    the same file transcribed correctly end to end. Loudness normalization
+    (ffmpeg loudnorm, plain gain boost) was tried first and didn't reliably
+    help -- it left VAD's rejections almost unchanged, and a naive gain
+    boost made things worse by clipping the recording's louder moments.
+    condition_on_previous_text is also off: on long recordings it can lock
+    onto a bad transcription and repeat it, and disabling it is the standard
+    mitigation. Whisper's own per-window no_speech/compression-ratio/logprob
+    heuristics (on by default, independent of VAD) still suppress hallucinated
+    text during genuine silence -- confirmed against this file's own silent
+    stretches before making this the default for every note, not just this one.
+    """
     from faster_whisper import WhisperModel
 
     model = WhisperModel(model_name, device="cuda", compute_type="float16")
-    segments_iter, info = model.transcribe(file_path, word_timestamps=True, vad_filter=True)
+    segments_iter, info = model.transcribe(
+        file_path, word_timestamps=True, vad_filter=False, condition_on_previous_text=False
+    )
 
     segments = []
     full_text_parts = []
