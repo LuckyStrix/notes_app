@@ -145,7 +145,8 @@ def grounding(card: dict, transcript_text: str) -> dict:
 def render_markdown(card: dict) -> str:
     out = [f"# {card.get('title', '')}", "", card.get("summary", ""), "", "## Topics"]
     for t in card.get("topics", []):
-        out += [f"- **{t['name']}** [{t['timestamp']}] -- {t['explanation']}"]
+        # Models often echo the prompt's "[mm:ss]" brackets back inside the value.
+        out += [f"- **{t['name']}** [{t['timestamp'].strip('[] ')}] -- {t['explanation']}"]
     out += ["", "## Key terms"] + [f"- **{t['term']}**: {t['definition']}" for t in card.get("key_terms", [])]
     out += ["", "## Formulas and rules"] + [f"- {f['statement']} ({f['context']})" for f in card.get("formulas_and_rules", [])]
     out += ["", "## Examples"] + [f"- {e['description']} -> {e['takeaway']}" for e in card.get("examples", [])]
