@@ -97,3 +97,7 @@ Everything AI-related is switchable at runtime from the **Settings** page — no
 - Markdown/PDF export.
 - In-browser mic/webcam recording (upload-from-file works today; recording directly in the browser would be nice for capturing notes from a phone on your tailnet).
 - Note backlinks/"related notes" surfaced from shared keywords or embedding similarity.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
