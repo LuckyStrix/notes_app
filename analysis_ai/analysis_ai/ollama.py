@@ -1,0 +1,69 @@
+"""Minimal Ollama client (standard library only): JSON-constrained generation,
+streaming chat, and embeddings. Each call takes a *stage* name ("extract",
+"chat") so the model and context size come from config, per stage."""
+import json
+import time
+import urllib.request
+from collections.abc import Iterator
+
+
+def _body(cfg: dict, stage: str, messages: list[dict], *, stream: bool, temperature: float, schema=None,
+          num_predict: int | None = None, keep_alive: str = "10m") -> dict:
+    model = cfg["models"][stage]
+    options = {"num_ctx": cfg["num_ctx"][stage], "temperature": temperature}
+    if num_predict:
+        options["num_predict"] = num_predict
+    body = {"model": model, "messages": messages, "stream": stream, "options": options, "keep_alive": keep_alive}
+    if schema is not None:
+        body["format"] = schema
+    if model in cfg.get("think", {}):
+        body["think"] = cfg["think"][model]
+    return body
+
+
+def _post(cfg: dict, path: str, body: dict, *, timeout: int = 3600):
+    req = urllib.request.Request(
+        cfg["ollama_url"].rstrip("/") + path, data=json.dumps(body).encode(), headers={"Content-Type": "application/json"}
+    )
+    return urllib.request.urlopen(req, timeout=timeout)
+
+
+def generate_json(cfg: dict, stage: str, prompt: str, schema: dict, *, temperature: float = 0.2,
+                  num_predict: int = 4096, attempts: int = 3) -> dict:
+    """One schema-constrained completion, parsed. Retries on transport errors or
+    unparseable output (e.g. a generation cut off by num_predict)."""
+    last: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            body = _body(cfg, stage, [{"role": "user", "content": prompt}], stream=False,
+                         temperature=temperature, schema=schema, num_predict=num_predict)
+            with _post(cfg, "/api/chat", body) as resp:
+                content = json.load(resp)["message"]["content"]
+            return json.loads(content)
+        except (json.JSONDecodeError, OSError, KeyError) as exc:
+            last = exc
+            time.sleep(2 * (attempt + 1))
+    raise RuntimeError(f"Ollama JSON generation failed after {attempts} attempts: {last}")
+
+
+def chat_stream(cfg: dict, stage: str, messages: list[dict], *, temperature: float = 0.3) -> Iterator[str]:
+    body = _body(cfg, stage, messages, stream=True, temperature=temperature, keep_alive="30m")
+    with _post(cfg, "/api/chat", body) as resp:
+        for line in resp:
+            if not line.strip():
+                continue
+            chunk = json.loads(line)
+            piece = chunk.get("message", {}).get("content", "")
+            if piece:
+                yield piece
+            if chunk.get("done"):
+                break
+
+
+def embed(cfg: dict, texts: list[str], *, batch: int = 32) -> list[list[float]]:
+    out: list[list[float]] = []
+    for i in range(0, len(texts), batch):
+        body = {"model": cfg["models"]["embed"], "input": texts[i : i + batch], "keep_alive": "10m"}
+        with _post(cfg, "/api/embed", body, timeout=600) as resp:
+            out.extend(json.load(resp)["embeddings"])
+    return out
