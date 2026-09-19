@@ -81,6 +81,14 @@ def sync(api: NotesAPI) -> dict:
     return {"notes_seen": len(seen), "written_or_updated": changed, "flagged_deleted_upstream": flagged}
 
 
+def load_tree() -> dict:
+    return store.read_json(store.SNAPSHOT / "tree.json", {"synced_at": None, "projects": []})
+
+
+def load_projects() -> list[dict]:
+    return load_tree()["projects"]
+
+
 def load_notes(include_deleted: bool = False) -> list[dict]:
     notes = [store.read_json(p) for p in sorted((store.SNAPSHOT / "notes").glob("*.json"))]
     return [n for n in notes if include_deleted or not n.get("deleted_upstream")]

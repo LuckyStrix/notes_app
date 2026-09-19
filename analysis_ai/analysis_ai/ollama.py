@@ -60,10 +60,30 @@ def chat_stream(cfg: dict, stage: str, messages: list[dict], *, temperature: flo
                 break
 
 
-def embed(cfg: dict, texts: list[str], *, batch: int = 32) -> list[list[float]]:
+def embed(cfg: dict, texts: list[str], *, batch: int = 32, on_batch=None) -> list[list[float]]:
     out: list[list[float]] = []
     for i in range(0, len(texts), batch):
+        if on_batch:
+            on_batch()
         body = {"model": cfg["models"]["embed"], "input": texts[i : i + batch], "keep_alive": "10m"}
         with _post(cfg, "/api/embed", body, timeout=600) as resp:
             out.extend(json.load(resp)["embeddings"])
     return out
+
+
+def list_models(cfg: dict) -> list[dict]:
+    with urllib.request.urlopen(cfg["ollama_url"].rstrip("/") + "/api/tags", timeout=10) as resp:
+        return json.load(resp)["models"]
+
+
+def unload_all(cfg: dict) -> None:
+    """Ask Ollama to drop every resident model. Called before Whisper starts so the
+    two never fight over VRAM (Ollama otherwise keeps a model loaded for minutes)."""
+    try:
+        with urllib.request.urlopen(cfg["ollama_url"].rstrip("/") + "/api/ps", timeout=10) as resp:
+            loaded = [m["model"] for m in json.load(resp).get("models", [])]
+        for model in loaded:
+            with _post(cfg, "/api/generate", {"model": model, "keep_alive": 0}, timeout=60):
+                pass
+    except OSError:
+        pass  # Ollama not running -> nothing to unload

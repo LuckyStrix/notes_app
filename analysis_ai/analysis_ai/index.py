@@ -15,6 +15,7 @@ import sqlite3
 import numpy as np
 
 from . import chunking, ollama, store
+from .progress import Ctx
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS chunks(
@@ -38,28 +39,50 @@ def _normalize(vectors: list[list[float]]) -> np.ndarray:
     return m / np.maximum(np.linalg.norm(m, axis=1, keepdims=True), 1e-9)
 
 
-def build(cfg: dict, notes: list[dict], log=print) -> None:
+def digest(cfg: dict, text: str) -> str:
+    return hashlib.sha256(f"{cfg['models']['embed']}\x00{cfg['retrieval_chunk_chars']}\x00{text}".encode()).hexdigest()
+
+
+def index_state(cfg: dict, notes: list[dict]) -> dict[str, str]:
+    """note_id -> 'current' | 'stale' | 'none' | 'n/a' (nothing to index yet)."""
     con = connect()
-    embed_model = cfg["models"]["embed"]
+    stored = dict(con.execute("SELECT note_id, source_hash FROM indexed").fetchall())
+    out = {}
+    for n in notes:
+        text = chunking.source_text(n)
+        if not text or not text.strip():
+            out[n["id"]] = "n/a"
+        elif n["id"] not in stored:
+            out[n["id"]] = "none"
+        else:
+            out[n["id"]] = "current" if stored[n["id"]] == digest(cfg, text) else "stale"
+    return out
+
+
+def build(cfg: dict, notes: list[dict], ctx: Ctx | None = None) -> None:
+    ctx = ctx or Ctx()
+    con = connect()
     live = {n["id"] for n in notes}
     # Drop index rows for notes that no longer exist in the mirror (derived data only).
     for (nid,) in con.execute("SELECT note_id FROM indexed").fetchall():
         if nid not in live:
             _delete_note(con, nid)
 
-    for note in notes:
+    for i, note in enumerate(notes):
+        ctx.check()
+        ctx.progress(i, len(notes), note["title"])
         text = chunking.source_text(note)
         if not text or not text.strip():
             continue
-        digest = hashlib.sha256(f"{embed_model}\0{cfg['retrieval_chunk_chars']}\0{text}".encode()).hexdigest()
+        note_digest = digest(cfg, text)
         row = con.execute("SELECT source_hash FROM indexed WHERE note_id=?", (note["id"],)).fetchone()
-        if row and row[0] == digest:
+        if row and row[0] == note_digest:
             continue
         chunks = chunking.pack(chunking.units_for(note, max_unit_chars=600), cfg["retrieval_chunk_chars"])
         folder = "/".join(note["group_path"])
         header = f"{note['project']} / {folder} / {note['title']}"
-        log(f"  indexing {header} ({len(chunks)} chunks)")
-        vectors = _normalize(ollama.embed(cfg, [f"search_document: {header}\n{c['text']}" for c in chunks]))
+        ctx.log(f"  indexing {header} ({len(chunks)} chunks)")
+        vectors = _normalize(ollama.embed(cfg, [f"search_document: {header}\n{c['text']}" for c in chunks], on_batch=ctx.check))
 
         _delete_note(con, note["id"])
         for c, vec in zip(chunks, vectors):
@@ -68,8 +91,9 @@ def build(cfg: dict, notes: list[dict], log=print) -> None:
                 (note["id"], note["project"], folder, note["title"], note["type"], c["label_start"], c["start"], c["text"], vec.tobytes()),
             )
             con.execute("INSERT INTO chunk_fts(rowid, text) VALUES (?, ?)", (cur.lastrowid, c["text"]))
-        con.execute("INSERT OR REPLACE INTO indexed(note_id, source_hash) VALUES (?,?)", (note["id"], digest))
+        con.execute("INSERT OR REPLACE INTO indexed(note_id, source_hash) VALUES (?,?)", (note["id"], note_digest))
         con.commit()
+    ctx.progress(len(notes), len(notes), "")
 
 
 def _delete_note(con: sqlite3.Connection, note_id: str) -> None:

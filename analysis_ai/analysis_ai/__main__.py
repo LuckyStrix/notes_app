@@ -44,6 +44,10 @@ def main() -> int:
             p.add_argument("question")
 
     sub.add_parser("status", help="show pipeline progress")
+
+    p = sub.add_parser("serve", help="run the web interface")
+    p.add_argument("--host", default="127.0.0.1", help="use 0.0.0.0 to reach it from other devices on your tailnet")
+    p.add_argument("--port", type=int, default=8090)
     args = parser.parse_args()
 
     if getattr(args, "model", None):
@@ -55,7 +59,7 @@ def main() -> int:
         print(sync.sync(NotesAPI(cfg["notes_api_url"])))
     elif args.cmd == "transcribe":
         from . import sync, transcribe
-        transcribe.transcribe_pending(cfg, sync.load_notes(), args.only)
+        transcribe.transcribe_pending(cfg, sync.load_notes(), only=args.only)
     elif args.cmd == "extract":
         from . import extract, sync
         extract.extract_all(cfg, sync.load_notes(), only=args.only, project=args.project, force=args.force)
@@ -80,6 +84,9 @@ def main() -> int:
             chat.run_turn(cfg, scope, [], args.question, mode=mode)
         else:
             chat.repl(cfg, scope)
+    elif args.cmd == "serve":
+        import uvicorn
+        uvicorn.run("analysis_ai.server:app", host=args.host, port=args.port, log_level="info")
     elif args.cmd == "status":
         from . import sync
         notes = sync.load_notes()

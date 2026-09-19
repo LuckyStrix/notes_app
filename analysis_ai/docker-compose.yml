@@ -1,0 +1,43 @@
+# Optional add-on. Deliberately NOT part of the notes app's own docker-compose.yml:
+# the notes app runs identically without this, and this only ever reads from it.
+#
+#   docker compose -f analysis_ai/docker-compose.yml up -d --build      (from the repo root)
+#   docker compose -f analysis_ai/docker-compose.yml down               (stop it; data is kept)
+#
+# Then open http://localhost:8090 (or http://<tailscale-ip>:8090 from another device).
+name: analysis_ai
+
+services:
+  analysis:
+    build: .
+    ports:
+      - "8090:8090"
+    environment:
+      AAI_DATA_DIR: /data
+      AAI_IN_CONTAINER: "1"
+      # The notes app's API (published on the host by the notes app) and native Ollama,
+      # reached the same way the notes app's own server/worker reach Ollama.
+      AAI_NOTES_API_URL: http://host.docker.internal:8000
+      AAI_OLLAMA_URL: http://host.docker.internal:11434
+      AAI_UPLOADS_DIR: /media
+    volumes:
+      # Everything this tool generates (gitignored). Host path, so it is easy to back up.
+      - ${AAI_DATA_LOCATION:-./data}:/data
+      # The notes app's uploads: READ-ONLY. Only used to feed recordings to Whisper.
+      - ${AAI_UPLOADS_LOCATION:-../uploads}:/media:ro
+      - whisper-cache:/root/.cache/huggingface
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+volumes:
+  whisper-cache:
+    # Same cache the host-side CLI uses, so large-v3 is only ever downloaded once.
+    name: analysis_ai_whisper_cache

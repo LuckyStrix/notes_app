@@ -11,6 +11,7 @@ import re
 from datetime import datetime, timezone
 
 from . import ollama, store
+from .progress import Cancelled, Ctx
 
 ROLLUP_VERSION = "1"
 ROLLUPS = store.D / "rollups"
@@ -102,14 +103,35 @@ def _card_brief(note: dict, card: dict) -> str:
             f"Instructor emphasis: {emph or 'none'}\nLogistics: {log_ or 'none'}")
 
 
-def rollup_project(cfg: dict, project: dict, notes: list[dict], *, force: bool = False, log=print) -> str:
-    pairs = [(n, c) for n, c in load_cards(notes) if n["project_id"] == project["id"]]
+def _project_pairs(project: dict, notes: list[dict]) -> list[tuple[dict, dict]]:
+    return [(n, c) for n, c in load_cards(notes) if n["project_id"] == project["id"]]
+
+
+def input_digest(cfg: dict, pairs: list[tuple[dict, dict]]) -> str:
+    model = cfg["models"]["extract"]
+    return hashlib.sha256(
+        (ROLLUP_VERSION + model + "".join(sorted(f"{n['id']}{_card_digest(c)}{n['title']}{'/'.join(n['group_path'])}" for n, c in pairs))).encode()
+    ).hexdigest()
+
+
+def rollup_state(cfg: dict, project: dict, notes: list[dict]) -> str:
+    """no-cards | none | stale | current"""
+    pairs = _project_pairs(project, notes)
+    if not pairs:
+        return "no-cards"
+    existing = store.read_json(ROLLUPS / f"{project['id']}.json")
+    if not existing:
+        return "none"
+    return "current" if existing["input_hash"] == input_digest(cfg, pairs) else "stale"
+
+
+def rollup_project(cfg: dict, project: dict, notes: list[dict], *, force: bool = False, ctx: Ctx | None = None) -> str:
+    ctx = ctx or Ctx()
+    pairs = _project_pairs(project, notes)
     if not pairs:
         return "no-cards"
     model = cfg["models"]["extract"]
-    digest = hashlib.sha256(
-        (ROLLUP_VERSION + model + "".join(sorted(f"{n['id']}{_card_digest(c)}{n['title']}{'/'.join(n['group_path'])}" for n, c in pairs))).encode()
-    ).hexdigest()
+    digest = input_digest(cfg, pairs)
     path = ROLLUPS / f"{project['id']}.json"
     existing = store.read_json(path)
     if existing and existing["input_hash"] == digest and not force:
@@ -123,12 +145,14 @@ def rollup_project(cfg: dict, project: dict, notes: list[dict], *, force: bool =
     groups = {}
     for gpath in sorted(by_group):
         label = "/".join(gpath) or "(top level)"
-        log(f"  folder {label}")
+        ctx.check()
+        ctx.log(f"  folder {label}")
         cards_text = "\n\n".join(_card_brief(n, c) for n, c in sorted(by_group[gpath], key=lambda p: p[0]["created_at"]))
         res = ollama.generate_json(cfg, "extract", GROUP_PROMPT.format(project=project["name"], folder=label, cards=cards_text[:24000]), GROUP_SCHEMA)
         groups[label] = res["summary"]
 
-    log("  course overview")
+    ctx.check()
+    ctx.log("  course overview")
     desc = f" ({project['description']})" if project.get("description") else ""
     groups_text = "\n\n".join(f"## {k}\n{v}" for k, v in groups.items())
     head = ollama.generate_json(cfg, "extract", PROJECT_PROMPT.format(project=project["name"], description=desc, groups=groups_text), PROJECT_SCHEMA)
@@ -196,13 +220,19 @@ def write_vault(project: dict, pairs: list[tuple[dict, dict]], data: dict) -> No
         (folder / f"{_safe(note['title'])} [{note['id'][:6]}].md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def rollup_all(cfg: dict, notes: list[dict], projects: list[dict], *, only: str | None = None, force: bool = False) -> None:
+def rollup_all(cfg: dict, notes: list[dict], projects: list[dict], *, only: str | None = None,
+               force: bool = False, ctx: Ctx | None = None) -> None:
+    ctx = ctx or Ctx()
     store.ensure_dirs()
-    for proj in projects:
-        if only and only.lower() not in proj["name"].lower():
-            continue
-        print(f"{proj['name']}", flush=True)
+    todo = [p for p in projects if not only or only.lower() in p["name"].lower()]
+    for i, proj in enumerate(todo):
+        ctx.check()
+        ctx.progress(i, len(todo), proj["name"])
+        ctx.log(f"{proj['name']}")
         try:
-            print("  ->", rollup_project(cfg, proj, notes, force=force, log=lambda m: print(m, flush=True)), flush=True)
+            ctx.log(f"  -> {rollup_project(cfg, proj, notes, force=force, ctx=ctx)}")
+        except Cancelled:
+            raise
         except Exception as exc:  # noqa: BLE001 -- keep going on the other classes
-            print(f"  -> FAILED: {exc}", flush=True)
+            ctx.log(f"  -> FAILED: {exc}")
+    ctx.progress(len(todo), len(todo), "")

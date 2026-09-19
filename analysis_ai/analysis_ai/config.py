@@ -29,6 +29,29 @@ DEFAULTS = {
     # Retrieval for chat.
     "retrieval_chunk_chars": 1200,
     "retrieval_top_k": 8,
+    # Web service.
+    "auto_sync": True,
+    "sync_interval_seconds": 120,
+    # "auto": run Whisper in a throwaway docker container when docker is on PATH,
+    # or directly when running inside the analysis_ai container.
+    "transcribe_mode": "auto",
+}
+
+# Deployment-specific values come from the environment (see docker-compose.yml).
+ENV_OVERRIDES = {
+    "AAI_NOTES_API_URL": "notes_api_url",
+    "AAI_OLLAMA_URL": "ollama_url",
+    "AAI_UPLOADS_DIR": "uploads_dir",
+}
+# Settings the web UI may change. Everything else (URLs, paths, image) is deployment config.
+EDITABLE = {
+    "models": {"extract": str, "chat": str, "embed": str},
+    "whisper_model": str,
+    "whisper_language": str,
+    "auto_sync": bool,
+    "sync_interval_seconds": int,
+    "retrieval_top_k": int,
+    "max_extract_chars": int,
 }
 
 
@@ -41,6 +64,62 @@ def _merge(base: dict, override: dict) -> dict:
 
 def load() -> dict:
     cfg_file = DATA_DIR / "config.json"
-    if cfg_file.exists():
-        return _merge(DEFAULTS, json.loads(cfg_file.read_text(encoding="utf-8")))
-    return dict(DEFAULTS)
+    cfg = _merge(DEFAULTS, json.loads(cfg_file.read_text(encoding="utf-8"))) if cfg_file.exists() else _merge(DEFAULTS, {})
+    for env, key in ENV_OVERRIDES.items():
+        if os.environ.get(env):
+            cfg[key] = os.environ[env]
+    return cfg
+
+
+WHISPER_MODELS = ["tiny", "base", "small", "medium", "large-v3", "distil-large-v3"]
+
+
+def save_editable(updates: dict) -> dict:
+    """Validate and persist UI-changeable settings into data/config.json (atomic).
+    Anything not in EDITABLE is rejected, so the web UI can never repoint the tool
+    at a different notes API, Ollama host, or filesystem path."""
+    unknown = set(updates) - set(EDITABLE)
+    if unknown:
+        raise ValueError(f"not editable: {', '.join(sorted(unknown))}")
+    cfg_file = DATA_DIR / "config.json"
+    current = json.loads(cfg_file.read_text(encoding="utf-8")) if cfg_file.exists() else {}
+
+    def text(v, what):
+        if not isinstance(v, str) or not v.strip() or len(v) > 100 or any(ord(c) < 32 for c in v):
+            raise ValueError(f"{what} must be a short non-empty string")
+        return v.strip()
+
+    def number(v, what, lo, hi):
+        if isinstance(v, bool) or not isinstance(v, int) or not lo <= v <= hi:
+            raise ValueError(f"{what} must be an integer between {lo} and {hi}")
+        return v
+
+    for key, value in updates.items():
+        if key == "models":
+            if not isinstance(value, dict) or set(value) - set(EDITABLE["models"]):
+                raise ValueError("models must map extract/chat/embed to model names")
+            current.setdefault("models", {}).update({k: text(v, f"models.{k}") for k, v in value.items()})
+        elif key == "whisper_model":
+            if value not in WHISPER_MODELS:
+                raise ValueError(f"whisper_model must be one of {WHISPER_MODELS}")
+            current[key] = value
+        elif key == "whisper_language":
+            if not isinstance(value, str) or not value.isalpha() or not 2 <= len(value) <= 3 or not value.islower():
+                raise ValueError("whisper_language must be a 2-3 letter lowercase code, e.g. en")
+            current[key] = value
+        elif key == "auto_sync":
+            if not isinstance(value, bool):
+                raise ValueError("auto_sync must be true or false")
+            current[key] = value
+        elif key == "sync_interval_seconds":
+            current[key] = number(value, key, 30, 86400)
+        elif key == "retrieval_top_k":
+            current[key] = number(value, key, 1, 40)
+        elif key == "max_extract_chars":
+            current[key] = number(value, key, 10_000, 5_000_000)
+
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = cfg_file.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(current, indent=1), encoding="utf-8")
+    os.replace(tmp, cfg_file)
+    return load()

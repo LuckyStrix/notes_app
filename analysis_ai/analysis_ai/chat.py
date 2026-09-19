@@ -94,6 +94,40 @@ def cited_sources(text: str, passages: list[dict]) -> list[str]:
     return [f"[{n}] {source_label(passages[n - 1])}" for n in nums]
 
 
+def task_request(kind: str, n: int | None, topic: str) -> tuple[str, str, int]:
+    """(request text, retrieval query, passages to retrieve) for a study task."""
+    n = n or (12 if kind == "flashcards" else 8)
+    topic = topic.strip()
+    return TASKS[kind].format(n=n, topic=topic or DEFAULT_TOPIC), topic or "key concepts, definitions, exam, important", 14
+
+
+def follow_up_query(history: list[dict], message: str) -> str | None:
+    """A short follow-up ("why?") searches with the previous question as context."""
+    if len(message.split()) < 6 and history:
+        previous = next((h["content"] for h in reversed(history) if h["role"] == "user"), "")
+        return f"{previous} {message}"[-400:]
+    return None
+
+
+def sources_payload(passages: list[dict], text: str) -> list[dict]:
+    """Every retrieved passage, flagged if the answer cited it, with what a UI
+    needs to link back to the note (timestamp or page)."""
+    tree = store.read_json(store.SNAPSHOT / "tree.json")
+    pid = {p["name"]: p["id"] for p in tree["projects"]}
+    cited = {int(n) for n in re.findall(r"\[(\d+)\]", text)}
+    out = []
+    for i, p in enumerate(passages, 1):
+        label = p["label"] or ""
+        out.append({
+            "n": i, "cited": i in cited, "note_id": p["note_id"], "project": p["project"],
+            "project_id": pid.get(p["project"]), "folder": p["folder"], "title": p["title"], "type": p["type"],
+            "label": label, "start_sec": p["start_sec"],
+            "page": int(label[2:]) if label.startswith("p.") and label[2:].isdigit() else None,
+            "text": p["text"],
+        })
+    return out
+
+
 def run_turn(cfg, projects, history, request, *, query=None, mode="strict", k=None, out=sys.stdout) -> str:
     gen = answer(cfg, projects, history, request, query=query, mode=mode, k=k)
     full, passages = "", []
@@ -140,16 +174,13 @@ def repl(cfg: dict, projects: list[str]) -> None:
         m = re.match(r"/(quiz|flashcards|guide)\s*(.*)", line)
         if m:
             task, rest = m.groups()
-            n = 8 if task != "flashcards" else 12
+            n = None
             num = re.match(r"(\d+)\s*(.*)", rest)
             if num:
                 n, rest = int(num.group(1)), num.group(2)
-            topic = rest.strip() or DEFAULT_TOPIC
-            request = TASKS[task].format(n=n, topic=topic)
-            query = rest.strip() or "key concepts, definitions, exam, important"
-            k = 14
-        elif len(line.split()) < 6 and history:  # short follow-up: keep the previous topic in the search
-            query = f"{next((h['content'] for h in reversed(history) if h['role'] == 'user'), '')} {line}"[-400:]
+            request, query, k = task_request(task, n, rest)
+        else:
+            query = follow_up_query(history, line)
         reply = run_turn(cfg, projects, history, request, query=query, mode=mode, k=k)
         history += [{"role": "user", "content": request}, {"role": "assistant", "content": reply}]
         history = history[-8:]

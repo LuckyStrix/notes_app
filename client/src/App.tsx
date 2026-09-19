@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
 
 import { useSettings } from "./api/hooks";
@@ -11,6 +11,42 @@ import ProjectsPage from "./pages/ProjectsPage";
 import SearchPage from "./pages/SearchPage";
 import SettingsPage from "./pages/SettingsPage";
 import WorkspaceEmptyState from "./pages/WorkspaceEmptyState";
+
+const ANALYSIS_PORT = 8090;
+
+// Link to the optional analysis_ai add-on (its own service on another port).
+// Only shown while that service is actually reachable, so the app looks exactly
+// as before when the add-on isn't running. no-cors: we only need to know
+// whether something answered, not read the response.
+function AnalysisLink() {
+  const base = `${window.location.protocol}//${window.location.hostname}:${ANALYSIS_PORT}`;
+  const [up, setUp] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const probe = () => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 2000);
+      fetch(`${base}/api/ping`, { mode: "no-cors", signal: controller.signal })
+        .then(() => !cancelled && setUp(true))
+        .catch(() => !cancelled && setUp(false))
+        .finally(() => clearTimeout(timer));
+    };
+    probe();
+    const interval = setInterval(probe, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [base]);
+
+  if (!up) return null;
+  return (
+    <a href={base} style={{ marginRight: "1rem" }}>
+      Analysis
+    </a>
+  );
+}
 
 export default function App() {
   const location = useLocation();
@@ -29,6 +65,7 @@ export default function App() {
           {appName}
         </NavLink>
         <nav className="nav-links">
+          <AnalysisLink />
           <NavLink to="/settings">Settings</NavLink>
         </nav>
       </header>

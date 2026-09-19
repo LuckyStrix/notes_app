@@ -15,6 +15,7 @@ import time
 from datetime import datetime, timezone
 
 from . import chunking, ollama, store
+from .progress import Cancelled, Ctx
 
 PROMPT_VERSION = "2"
 SHORT_NOTE_CHARS = 300  # below this, the note itself is the card -- nothing to compress
@@ -117,8 +118,27 @@ def _merge(partials: list[dict], chunks: list[dict]) -> dict:
     return merged
 
 
-def extract_note(cfg: dict, note: dict, *, force: bool = False, log=print) -> str:
+def card_state(cfg: dict, note: dict) -> str:
+    """Where a note stands, without doing any work:
+    needs-transcript | empty | search-only | none | stale | current | short."""
+    text = chunking.source_text(note)
+    if text is None:
+        return "needs-transcript"
+    if not text.strip():
+        return "empty"
+    if len(text) > cfg["max_extract_chars"]:
+        return "search-only"
+    existing = store.read_json(store.CARDS / f"{note['id']}.json")
+    if not existing:
+        return "none"
+    if existing["meta"]["source_hash"] != source_hash(text, cfg["models"]["extract"]):
+        return "stale"
+    return "short" if existing.get("short") else "current"
+
+
+def extract_note(cfg: dict, note: dict, *, force: bool = False, ctx: Ctx | None = None) -> str:
     """Returns a status string: cached | done | short | search-only | no-source | empty."""
+    ctx = ctx or Ctx()
     text = chunking.source_text(note)
     if text is None:
         return "no-source"  # media note not transcribed yet
@@ -145,7 +165,8 @@ def extract_note(cfg: dict, note: dict, *, force: bool = False, log=print) -> st
     chunks = chunking.pack(chunking.units_for(note), cfg["text_chunk_chars"])
     partials = []
     for c in chunks:
-        log(f"    chunk {c['index'] + 1}/{len(chunks)} ({len(c['text'])} chars)")
+        ctx.check()
+        ctx.log(f"    chunk {c['index'] + 1}/{len(chunks)} ({len(c['text'])} chars)")
         prompt = CHUNK_PROMPT.format(
             kind=SOURCE_KIND[note["type"]], project=note["project"], folder="/".join(note["group_path"]) or "(none)",
             title=note["title"], part=c["index"] + 1, parts=len(chunks), text=c["marked_text"],
@@ -154,6 +175,7 @@ def extract_note(cfg: dict, note: dict, *, force: bool = False, log=print) -> st
 
     merged = _merge(partials, chunks)
     summaries = "\n".join(f"Part {i + 1}: {p.get('summary', '')}" for i, p in enumerate(partials))
+    ctx.check()
     head = ollama.generate_json(
         cfg, "extract", TITLE_PROMPT.format(title=note["title"], project=note["project"], parts=summaries), TITLE_SCHEMA
     )
@@ -168,17 +190,32 @@ def extract_note(cfg: dict, note: dict, *, force: bool = False, log=print) -> st
 
 
 def extract_all(cfg: dict, notes: list[dict], *, only: str | None = None, project: str | None = None,
-                force: bool = False) -> None:
+                ids: set[str] | None = None, stale_only: bool = False, force: bool = False,
+                ctx: Ctx | None = None) -> dict:
+    """Build cards for the selected notes. `stale_only` limits to notes whose card is
+    missing or out of date (what the UI's "update" button uses)."""
+    ctx = ctx or Ctx()
     store.ensure_dirs()
     targets = [n for n in notes if (only is None or n["id"].startswith(only))
-               and (project is None or project.lower() in n["project"].lower())]
+               and (project is None or project.lower() in n["project"].lower())
+               and (ids is None or n["id"] in ids)]
+    if stale_only:
+        targets = [n for n in targets if card_state(cfg, n) in ("none", "stale")]
     counts: dict[str, int] = {}
     for i, note in enumerate(targets, 1):
-        print(f"[{i}/{len(targets)}] {note['project']} / {'/'.join(note['group_path'])} / {note['title']} ({note['type']})", flush=True)
+        ctx.check()
+        label = f"{note['project']} / {'/'.join(note['group_path'])} / {note['title']}"
+        ctx.progress(i - 1, len(targets), label)
+        ctx.log(f"[{i}/{len(targets)}] {label} ({note['type']})")
         try:
-            status = extract_note(cfg, note, force=force, log=lambda m: print(m, flush=True))
+            status = extract_note(cfg, note, force=force, ctx=ctx)
+        except Cancelled:
+            raise
         except Exception as exc:  # noqa: BLE001 -- one bad note must not stop an overnight run
             status = f"FAILED: {exc}"
-        counts[status.split(":")[0]] = counts.get(status.split(":")[0], 0) + 1
-        print(f"    -> {status}", flush=True)
-    print("summary:", counts, flush=True)
+        key = status.split(":")[0]
+        counts[key] = counts.get(key, 0) + 1
+        ctx.log(f"    -> {status}")
+    ctx.progress(len(targets), len(targets), "")
+    ctx.log(f"summary: {counts}")
+    return counts
