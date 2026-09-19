@@ -7,13 +7,17 @@ directory. Talks to Ollama over HTTP; standard library only.
     python bakeoff.py <transcript.json> <out_dir> model1 [model2 ...]
 """
 import json
+import os
 import re
 import sys
 import time
+import urllib.error
 import urllib.request
 
 OLLAMA = "http://localhost:11434"
-NUM_CTX = 32768
+# BAKEOFF_CTX lowers the context window: a smaller KV cache leaves room for more of
+# the model on the GPU. The whole-lecture prompt here is ~10.5K tokens, so >= 14000.
+NUM_CTX = int(os.environ.get("BAKEOFF_CTX", 32768))
 
 # Thinking-capable models need an explicit setting. gpt-oss can't disable
 # thinking (only low/medium/high); qwen3.x can, and combining its thinking with
@@ -103,22 +107,55 @@ def timestamped_transcript(segments: list[dict], block_seconds: float = 45.0) ->
     return "\n".join(blocks)
 
 
-def call_ollama(model: str, prompt: str) -> dict:
+def _post(path: str, body: dict, timeout: int = 3600) -> dict:
+    req = urllib.request.Request(
+        f"{OLLAMA}{path}", data=json.dumps(body).encode(), headers={"Content-Type": "application/json"}
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.load(resp)
+
+
+def gpu_share(model: str) -> float | None:
+    """Fraction of the loaded model that is in VRAM, from Ollama's /api/ps."""
+    with urllib.request.urlopen(f"{OLLAMA}/api/ps", timeout=10) as resp:
+        for m in json.load(resp).get("models", []):
+            if m["name"] == model or m["model"] == model:
+                return round(100 * m["size_vram"] / m["size"], 1) if m["size"] else None
+    return None
+
+
+def call_ollama(spec: str, prompt: str) -> tuple[dict, float | None]:
+    """`spec` is a model name, optionally with a thinking effort: `gpt-oss:20b@high`.
+    Returns (response, percent of the model that was on the GPU)."""
+    model, _, effort = spec.partition("@")
     body = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "format": STUDY_CARD_SCHEMA,
         "stream": False,
         "options": {"num_ctx": NUM_CTX, "temperature": 0.2},
-        "keep_alive": 0,  # unload right after, so the next model gets the whole GPU
+        "keep_alive": "2m",  # long enough to read GPU placement afterwards; unloaded explicitly below
     }
-    if model in THINK:
-        body["think"] = THINK[model]
-    req = urllib.request.Request(
-        f"{OLLAMA}/api/chat", data=json.dumps(body).encode(), headers={"Content-Type": "application/json"}
-    )
-    with urllib.request.urlopen(req, timeout=3600) as resp:
-        return json.load(resp)
+    think = effort or THINK.get(model)
+    if think is None and "qwen" in model.lower():
+        think = False  # community Qwen builds: keep thinking off, as for the official one
+    if think is not None:
+        body["think"] = think
+    try:
+        try:
+            resp = _post("/api/chat", body)
+        except urllib.error.HTTPError as exc:
+            if exc.code != 400 or "think" not in body:
+                raise
+            print(f"  (model rejected the think setting, retrying without: {exc.read().decode()[:120]})", flush=True)
+            del body["think"]
+            resp = _post("/api/chat", body)
+        return resp, gpu_share(model)
+    finally:
+        try:
+            _post("/api/generate", {"model": model, "keep_alive": 0}, timeout=60)  # free VRAM for the next model
+        except OSError:
+            pass
 
 
 def grounding(card: dict, transcript_text: str) -> dict:
@@ -170,7 +207,7 @@ def main() -> int:
         print(f"\n=== {model}", flush=True)
         started = time.time()
         try:
-            resp = call_ollama(model, prompt)
+            resp, on_gpu = call_ollama(model, prompt)
         except Exception as exc:  # noqa: BLE001 -- record and move on to the next model
             print(f"  FAILED: {exc}", flush=True)
             all_metrics[model] = {"error": str(exc)}
@@ -184,6 +221,8 @@ def main() -> int:
             "prompt_tokens": resp.get("prompt_eval_count"),
             "output_tokens": resp.get("eval_count"),
             "tokens_per_sec": round(resp["eval_count"] / (resp["eval_duration"] / 1e9), 1) if resp.get("eval_duration") else None,
+            "percent_on_gpu": on_gpu,
+            "num_ctx": NUM_CTX,
         }
         try:
             card = json.loads(raw)
