@@ -2,5 +2,7 @@ starlette>=0.37
 uvicorn>=0.30
 numpy>=1.24
 faster-whisper==1.1.0
+# faster-whisper imports requests to fetch models; the notes app's worker pins it separately.
+requests==2.32.3
 nvidia-cublas-cu12==12.4.5.8
 nvidia-cudnn-cu12==9.1.0.70
