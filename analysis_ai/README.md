@@ -73,13 +73,13 @@ First bake-off (one 74-minute lecture, single pass; `scripts/bakeoff.py`):
 |---|---|---|
 | `lfm2` | 24 s | Fast, but generic textbook content; missed the exam date/scope entirely; duplicate timestamps. |
 | `gpt-oss:20b` | 43 s | Specific and granular; one conceptual error; missed exam scope/format. |
-| `qwen3.6:27b` (Q4_K_M, 17 GB) | 201 s | Most accurate and complete (exam date, scope, format). Default for cards and chat, but only 78% fits on a 16 GB GPU, so it runs at ~9.5 tok/s with the CPU pegged. |
+| `qwen3.6:27b` (Q4_K_M, 17 GB) | 201 s | Most accurate and complete (exam date, scope, format). Was the default, but only 78% fits on a 16 GB GPU, so it ran at ~9.5 tok/s with the CPU pegged. |
 
 Second round, fitting the model into a 16 GB card (`scripts/fitcheck.py`, `scripts/bakeoff.py`; same lecture):
 
 | model | on GPU | speed | notes |
 |---|---|---|---|
-| `hf.co/unsloth/Qwen3.6-27B-GGUF:Q3_K_M` (13.6 GB) | 94% @8k ctx, 90% @16k | 18.8 tok/s, 121 s | All six verified exam facts, plus a real "not in the textbook, I love to test on it" emphasis the Q4 card missed. Cards were coarser (3 topics, no examples) in single-pass mode. **Best trade-off found.** |
+| `hf.co/unsloth/Qwen3.6-27B-GGUF:Q3_K_M` (13.6 GB) | 94% @8k ctx, 90% @16k | 18.8 tok/s, 121 s | All six verified exam facts, plus a real "not in the textbook, I love to test on it" emphasis the Q4 card missed. Cards were coarser (3 topics, no examples) in single-pass mode. **Best trade-off found; now the default for cards and chat** (8k context for cards, 16k for chat; measured 94% / 90% on the GPU). |
 | `hf.co/unsloth/Qwen3.6-27B-GGUF:IQ4_XS` (15.4 GB) | 83% @8k, 81% @16k | not measured | Does not fit; barely better than the Q4 already installed. The bake-off run was stopped by low system memory. |
 | `gpt-oss:20b`, thinking `low` | 100% | ~72 tok/s | The setting used in round one. |
 | `gpt-oss:20b`, thinking `medium` | 100% | 40 s | Structure collapsed (1 topic) — more thinking made it worse. |
@@ -87,4 +87,4 @@ Second round, fitting the model into a 16 GB card (`scripts/fitcheck.py`, `scrip
 
 Partial CPU offload is what makes a model that is slightly too big feel so slow: every token has to wait for the CPU-resident layers, so the GPU idles while the CPU is pegged. A model that is ~90%+ on the GPU behaves much better than one at ~78%.
 
-n=1, judged by reading against the transcript — a strong hint, not a benchmark. Local models are also loose with citations (they occasionally attach a `[n]` to a claim the passage doesn't support), which is why every answer shows the retrieved passages next to it.
+n=1, judged by reading against the transcript — a strong hint, not a benchmark. Every answer shows the retrieved passages next to it so citations can be checked — local models can attach a `[n]` to a claim the passage doesn't support. (In spot checks against the real notes, the cited claims held up.) Thinking is switched off for Qwen models because thinking plus JSON-schema output can run away until the context is full.

@@ -16,9 +16,20 @@ def _body(cfg: dict, stage: str, messages: list[dict], *, stream: bool, temperat
     body = {"model": model, "messages": messages, "stream": stream, "options": options, "keep_alive": keep_alive}
     if schema is not None:
         body["format"] = schema
-    if model in cfg.get("think", {}):
-        body["think"] = cfg["think"][model]
+    think = think_setting(cfg, model)
+    if think is not None:
+        body["think"] = think
     return body
+
+
+def think_setting(cfg: dict, model: str):
+    """The `think` value to send for this model, or None to leave it at the model's default.
+    Explicit config wins; otherwise Qwen models get thinking OFF, because thinking combined with
+    schema-constrained output can run away until the context is full and return nothing."""
+    configured = cfg.get("think", {})
+    if model in configured:
+        return configured[model]
+    return False if "qwen" in model.lower() else None
 
 
 def _post(cfg: dict, path: str, body: dict, *, timeout: int = 3600):

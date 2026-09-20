@@ -137,6 +137,26 @@ class SettingsValidation(unittest.TestCase):
         self.assertEqual((cfg["whisper_model"], cfg["retrieval_top_k"]), ("medium", 12))  # earlier edit kept
 
 
+class ModelDefaults(unittest.TestCase):
+    def test_primary_model_and_context_are_sized_for_a_16gb_gpu(self):
+        d = config.DEFAULTS
+        self.assertTrue(d["models"]["extract"].endswith("Q3_K_M"))
+        self.assertEqual(d["models"]["extract"], d["models"]["chat"])  # one resident model, no swapping
+        self.assertLessEqual(d["num_ctx"]["extract"], 8192)
+        self.assertLessEqual(d["num_ctx"]["chat"], 16384)
+
+    def test_thinking_is_off_for_qwen_models_and_explicit_config_wins(self):
+        from analysis_ai import ollama
+        cfg = config.load()
+        self.assertIs(ollama.think_setting(cfg, cfg["models"]["extract"]), False)
+        self.assertIs(ollama.think_setting(cfg, "some-other-qwen3:14b"), False)  # a model picked later in Settings
+        self.assertEqual(ollama.think_setting(cfg, "gpt-oss:20b"), "low")
+        self.assertIsNone(ollama.think_setting(cfg, "llama3.1:8b"))  # non-thinking models: leave alone
+        body = ollama._body(cfg, "extract", [], stream=False, temperature=0.2)
+        self.assertIs(body["think"], False)
+        self.assertEqual(body["options"]["num_ctx"], cfg["num_ctx"]["extract"])
+
+
 class HttpGuards(unittest.TestCase):
     """Uses the real ASGI app with the job runner and sync loop stubbed out."""
 

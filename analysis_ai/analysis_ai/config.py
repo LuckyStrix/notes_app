@@ -16,11 +16,18 @@ DEFAULTS = {
     "whisper_model": "large-v3",
     # Explicit on purpose: Whisper's auto-detect labelled English lectures as Welsh.
     "whisper_language": "en",
-    # Model per stage. The bake-off (see README) favoured qwen3.6:27b for extraction quality.
-    "models": {"extract": "qwen3.6:27b", "chat": "qwen3.6:27b", "embed": "nomic-embed-text"},
-    "num_ctx": {"extract": 16384, "chat": 32768},
-    # Ollama "think" setting per model; models not listed use their own default.
-    "think": {"gpt-oss:20b": "low", "qwen3.6:27b": False},
+    # Model per stage. Qwen3.6 27B at Q3_K_M (13.6 GB) is the best fit for a 16 GB GPU found in
+    # the bake-offs (see README): ~94% on the GPU and about twice the speed of the Q4_K_M build,
+    # which only ~78% fits, with the same exam facts extracted.
+    "models": {"extract": "hf.co/unsloth/Qwen3.6-27B-GGUF:Q3_K_M", "chat": "hf.co/unsloth/Qwen3.6-27B-GGUF:Q3_K_M",
+               "embed": "nomic-embed-text"},
+    # Context windows are chosen for VRAM, not convenience: every extra 8k of context costs
+    # roughly 0.5 GB, and a model that spills onto the CPU is far slower. Card-building chunks
+    # are ~2K tokens in + <=4K out, so 8k is plenty; chat carries the class overview + passages.
+    "num_ctx": {"extract": 8192, "chat": 16384},
+    # Ollama "think" setting per model. Models not listed use their own default, except Qwen
+    # models, which ollama.py turns thinking off for (thinking + JSON schema output is unreliable).
+    "think": {"gpt-oss:20b": "low", "qwen3.6:27b": False, "hf.co/unsloth/Qwen3.6-27B-GGUF:Q3_K_M": False},
     # Notes with more text than this (e.g. a whole textbook) are indexed for
     # search only, not summarized by the LLM.
     "max_extract_chars": 150_000,
