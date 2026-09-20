@@ -85,6 +85,8 @@ Second round, fitting the model into a 16 GB card (`scripts/fitcheck.py`, `scrip
 | `gpt-oss:20b`, thinking `medium` | 100% | 40 s | Structure collapsed (1 topic) — more thinking made it worse. |
 | `gpt-oss:20b`, thinking `high` | 100% | — | Never finishes: with a JSON schema it thinks until the context is full (22,680 tokens) and returns nothing. |
 
+**CPU use with the primary model (`scripts/tune.py`, ctx 8k).** Ollama's automatic split put 64 of 65 layers on the GPU, left ~2 GB of VRAM unused, and the one CPU layer kept all 10 llama-server threads busy-waiting: **40% of the machine's CPU** for the same ~24 tok/s. Requesting `num_gpu=99` puts all 65 layers on the GPU and drops that to **4%** with no change in speed (5% measured while building a real card through the app). Capping `num_thread=4` alone only gets to 16%, but it stays as a safety net: if forcing full offload is ever refused (another app took VRAM), the request is retried without `num_gpu` and the thread cap still applies. Both are set per model in `model_options` in `config.py`.
+
 Partial CPU offload is what makes a model that is slightly too big feel so slow: every token has to wait for the CPU-resident layers, so the GPU idles while the CPU is pegged. A model that is ~90%+ on the GPU behaves much better than one at ~78%.
 
 n=1, judged by reading against the transcript — a strong hint, not a benchmark. Every answer shows the retrieved passages next to it so citations can be checked — local models can attach a `[n]` to a claim the passage doesn't support. (In spot checks against the real notes, the cited claims held up.) Thinking is switched off for Qwen models because thinking plus JSON-schema output can run away until the context is full.
