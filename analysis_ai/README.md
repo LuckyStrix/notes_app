@@ -1,6 +1,6 @@
 # analysis_ai
 
-An **optional** add-on to notes_app: transcribe your lecture recordings, turn everything into study cards with a local Ollama model, roll them up per class, and chat / quiz over the result, NotebookLM-style. Fully local; speed is not a goal.
+An **optional** add-on to notes_app: transcribe your lecture recordings, turn everything into summary cards with a local Ollama model, roll them up per class, and chat / quiz over the result, NotebookLM-style. Fully local; speed is not a goal.
 
 The notes app does not depend on this folder and works identically without it.
 
@@ -14,18 +14,18 @@ Open **http://localhost:8090** — or `http://<tailscale-ip>:8090` from another 
 
 | Tab | What you do there |
 |---|---|
-| **Pipeline** | The control room. Every note with status chips (transcribed? study card up to date? searchable?). Buttons: **Transcribe** (per recording, with a time estimate), **Build card**, **Update class** (builds what's new/edited, then the class overview and search index), **Cancel** on the job list. |
+| **Pipeline** | The control room. Every note with status chips (transcribed? summary card up to date? searchable?). Buttons: **Transcribe** (per recording, with a time estimate), **Build card**, **Update class** (builds what's new/edited, then the class overview and search index), **Cancel** on the job list. |
 | **Chat** | Pick classes, ask questions. Answers cite `[n]` → note + timestamp/page, with the retrieved passages shown under each answer and a link back into the notes app at that moment. **Study tools**: practice quiz, flashcards, study guide (optionally on a topic). "Only from my notes" or "labelled outside knowledge" mode. |
-| **Library** | Per class: overview, themes, how ideas connect, folder summaries, exam/deadline list, "flagged as important by the instructor", searchable glossary, and every note's study card. |
+| **Library** | Per class: overview, themes, how ideas connect, folder summaries, exam/deadline list, "flagged as important by the instructor", searchable glossary, and every note's summary card. |
 | **Settings** | Model per stage (from `ollama list`), Whisper model, spoken language, auto-sync, retrieval size. |
 
-**What's automatic and what isn't.** The only thing that happens by itself is a read-only sync every couple of minutes that notices new / edited / deleted notes and marks things out of date. Transcription, study cards, overviews and indexing only run when you press a button. Jobs run one at a time (they all want the whole GPU); Whisper unloads any Ollama model first so they don't fight over VRAM.
+**What's automatic and what isn't.** The only thing that happens by itself is a read-only sync every couple of minutes that notices new / edited / deleted notes and marks things out of date. Transcription, summary cards, overviews and indexing only run when you press a button. Jobs run one at a time (they all want the whole GPU); Whisper unloads any Ollama model first so they don't fight over VRAM.
 
 ## Guarantees
 
 - **Read-only toward notes_app data.** The only channel to the notes app is `notes_api.py`, which has exactly one verb (`GET`) — a unit test enforces that. `uploads/` is mounted `:ro` and is only read to feed recordings to Whisper. Nothing here writes to the notes database, `uploads/`, or `postgres-data/`.
 - **Own storage.** Everything generated lives under `analysis_ai/data/` (gitignored). It's derived from personal course material and this repo is public, so only code and prompts are ever committed.
-- **Nothing is lost silently.** Notes deleted in the notes app are *flagged* in the mirror, never removed. A re-transcription keeps the previous transcript in `data/transcripts/previous/`. Files are written atomically. Study cards are merged deterministically, so the model can't drop items in a summarising pass.
+- **Nothing is lost silently.** Notes deleted in the notes app are *flagged* in the mirror, never removed. A re-transcription keeps the previous transcript in `data/transcripts/previous/`. Files are written atomically. Summary cards are merged deterministically, so the model can't drop items in a summarising pass.
 - **Its own transcripts.** Whisper's language is forced (default `en`): auto-detect labelled English lectures as Welsh and produced unusable transcripts in the notes app.
 - **Locked-down web API.** No login (like the notes app, it belongs on your tailnet), but state-changing requests must be `application/json` (so no other web page can make your browser start jobs), ids are validated before any file access, and Settings can only change a whitelist (models, Whisper, sync, retrieval) — never URLs or paths.
 

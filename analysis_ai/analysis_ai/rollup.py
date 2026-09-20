@@ -1,4 +1,4 @@
-"""Roll per-note study cards up into per-folder summaries and a per-class overview,
+"""Roll per-note summary cards up into per-folder summaries and a per-class overview,
 and write everything out as a readable markdown vault (Obsidian-compatible).
 
 Deterministic where possible: the glossary, logistics list and instructor-emphasis
@@ -30,7 +30,7 @@ PROJECT_SCHEMA = {
 }
 
 GROUP_PROMPT = """Course: {project}. Folder: {folder}.
-Below are study cards for the notes in this folder. Write a 4-8 sentence summary of what this folder covers, specific to the actual content (name the theories, terms, examples and any exam/deadline details). Do not invent anything not in the cards.
+Below are summary cards for the notes in this folder. Write a 4-8 sentence summary of what this folder covers, specific to the actual content (name the theories, terms, examples and any exam/deadline details). Do not invent anything not in the cards.
 
 {cards}
 """

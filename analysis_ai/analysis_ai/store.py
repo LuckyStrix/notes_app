@@ -8,7 +8,7 @@ from . import config
 D = config.DATA_DIR
 SNAPSHOT = D / "snapshot"          # mirror of the notes app's structure + note text
 TRANSCRIPTS = D / "transcripts"    # our own Whisper transcripts, one JSON per media note
-CARDS = D / "cards"                # per-note study cards
+CARDS = D / "cards"                # per-note summary cards
 VAULT = D / "vault"                # human-readable markdown (Obsidian-compatible)
 INDEX_DB = D / "index.db"          # retrieval index (SQLite)
 LOGS = D / "logs"

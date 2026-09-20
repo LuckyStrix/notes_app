@@ -14,7 +14,7 @@ build/
 *.tsbuildinfo
 .pytest_cache/
 
-# analysis_ai: everything it generates (transcripts, study cards, indexes) is
+# analysis_ai: everything it generates (transcripts, summary cards, indexes) is
 # derived from personal course material and the repo is public -- code only.
 analysis_ai/data/
 analysis_ai/.venv/

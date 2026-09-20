@@ -41,7 +41,7 @@ def run(kind: str, params: dict, ctx: Ctx) -> None:
         if project is None:
             raise ValueError("update needs a project")
         ctx.log(f"Updating {project['name']}")
-        extract.extract_all(cfg, notes, project=project["name"], stale_only=True, ctx=_Staged(ctx, "1/3 study cards"))
+        extract.extract_all(cfg, notes, project=project["name"], stale_only=True, ctx=_Staged(ctx, "1/3 summary cards"))
         rollup.rollup_all(cfg, notes, [project], ctx=_Staged(ctx, "2/3 class overview"))
         index.build(cfg, notes, _Staged(ctx, "3/3 search index"))
     else:

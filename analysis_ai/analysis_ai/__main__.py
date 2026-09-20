@@ -11,7 +11,7 @@ def _projects() -> list[dict]:
 
 def main() -> int:
     cfg = config.load()
-    parser = argparse.ArgumentParser(prog="analysis_ai", description="Optional local study analysis for notes_app")
+    parser = argparse.ArgumentParser(prog="analysis_ai", description="Optional local analysis for notes_app")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("sync", help="mirror notes/folders from the notes app (GET-only)")
@@ -19,7 +19,7 @@ def main() -> int:
     p = sub.add_parser("transcribe", help="Whisper-transcribe audio/video notes lacking a transcript (manual, GPU)")
     p.add_argument("--only", help="note id prefix")
 
-    p = sub.add_parser("extract", help="build per-note study cards (chunked; cached, so re-runs only redo changes)")
+    p = sub.add_parser("extract", help="build per-note summary cards (chunked; cached, so re-runs only redo changes)")
     p.add_argument("--only", help="note id prefix")
     p.add_argument("--project", help="class name substring")
     p.add_argument("--model", help="override the extract model for this run")
@@ -93,7 +93,7 @@ def main() -> int:
         media = [n for n in notes if n["type"] in ("audio", "video")]
         done = sum((store.TRANSCRIPTS / f"{n['id']}.json").exists() for n in media)
         cards = len(list(store.CARDS.glob("*.json")))
-        print(f"notes mirrored: {len(notes)}; media transcribed: {done}/{len(media)}; study cards: {cards}")
+        print(f"notes mirrored: {len(notes)}; media transcribed: {done}/{len(media)}; summary cards: {cards}")
     return 0
 
 

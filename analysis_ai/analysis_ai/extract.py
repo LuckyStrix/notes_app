@@ -1,4 +1,4 @@
-"""Per-note study cards via chunked map-then-merge.
+"""Per-note summary cards via chunked map-then-merge.
 
 Map: each ~6000-char chunk of a note (about 9 minutes of a lecture) goes to the
 model alone, so it can afford to be thorough about that stretch. Merge: items
@@ -54,7 +54,7 @@ SOURCE_KIND = {
     "text": "the student's own typed notes or a pasted transcript",
 }
 
-CHUNK_PROMPT = """You are building a study card for a student. The material below is {kind}.
+CHUNK_PROMPT = """You are building a summary card for a student. The material below is {kind}.
 Course: {project}. Folder: {folder}. Note title: "{title}". This is part {part} of {parts} of the source, so it may begin or end mid-thought.
 
 Rules:

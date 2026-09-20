@@ -156,8 +156,8 @@ def _job_title(kind: str, notes_by_id: dict, ids, project) -> str:
         return f"Transcribe {len(ids) if ids else 'all pending'} recording(s)"
     if kind == "extract":
         if ids and len(ids) == 1:
-            return f"Build study card: {notes_by_id[ids[0]]['title']}"
-        return f"Build study cards{' for ' + project['name'] if project else ''}"
+            return f"Build summary card: {notes_by_id[ids[0]]['title']}"
+        return f"Build summary cards{' for ' + project['name'] if project else ''}"
     if kind == "rollup":
         return f"Class overview{': ' + project['name'] if project else 's'}"
     if kind == "index":

@@ -1,5 +1,5 @@
 """Run the same lecture transcript through several Ollama models and save the
-study cards side by side, so model choice is made on evidence.
+summary cards side by side, so model choice is made on evidence.
 
 Reads a transcript JSON (from transcribe.py), writes only under the output
 directory. Talks to Ollama over HTTP; standard library only.
@@ -74,7 +74,7 @@ STUDY_CARD_SCHEMA = {
     "required": ["title", "summary", "topics", "key_terms", "formulas_and_rules", "examples", "logistics"],
 }
 
-PROMPT = """You are turning a raw, auto-generated lecture transcript into a study card for the student who attended it.
+PROMPT = """You are turning a raw, auto-generated lecture transcript into a summary card for the student who attended it.
 
 Rules:
 - Extract only substantive course content. Ignore small talk, jokes, personal anecdotes, tangents unrelated to the course, and classroom management chatter -- except exams, deadlines, assignments and readings, which go in "logistics".

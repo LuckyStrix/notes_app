@@ -159,7 +159,7 @@ async function openNote(noteId) {
         h("a", { class: "btn small", href: noteHref(d.project_id, d.id), target: "_blank", rel: "noopener", text: "Open in notes_app ↗" }),
         h("button", { class: "btn small", onclick: () => back.remove(), text: "Close" })),
       h("p", { class: "muted small", text: `${d.project} / ${d.folder || "(top level)"} · ${d.type}` }),
-      d.card ? renderCard(d) : h("p", { class: "banner info", text: "No study card yet — build it from the Pipeline tab." }),
+      d.card ? renderCard(d) : h("p", { class: "banner info", text: "No summary card yet — build it from the Pipeline tab." }),
       renderSource(d),
     );
   } catch (e) { box.replaceChildren(h("p", { class: "banner bad", text: e.message })); }
@@ -228,10 +228,10 @@ function noteActions(n) {
     }, text: "Re-transcribe" }));
   }
   if (n.card === "none" || n.card === "stale") {
-    acts.push(h("button", { class: "btn small primary", onclick: () => submitJob({ kind: "extract", ids: [n.id] }, `study card for ${n.title}`), text: "Build card" }));
+    acts.push(h("button", { class: "btn small primary", onclick: () => submitJob({ kind: "extract", ids: [n.id] }, `summary card for ${n.title}`), text: "Build card" }));
   } else if (n.card === "current") {
     acts.push(h("button", { class: "btn small", onclick: () => {
-      if (confirm(`Rebuild the study card for "${n.title}" from scratch?`)) submitJob({ kind: "extract", ids: [n.id], force: true }, `rebuild card ${n.title}`);
+      if (confirm(`Rebuild the summary card for "${n.title}" from scratch?`)) submitJob({ kind: "extract", ids: [n.id], force: true }, `rebuild card ${n.title}`);
     }, text: "Rebuild" }));
   }
   if (n.card !== "empty") acts.push(h("button", { class: "btn small", onclick: () => openNote(n.id), text: "View" }));
@@ -251,7 +251,7 @@ function classBlock(p) {
   det.append(h("div", { class: "class-head" },
     h("h2", { text: p.name }),
     sum.media.length ? h("span", { class: `chip ${sum.pending.length ? "" : "ok"}`, text: `${sum.done}/${sum.media.length} recordings transcribed` }) : null,
-    h("span", { class: `chip ${sum.eligible.length && sum.current === sum.eligible.length ? "ok" : ""}`, text: `${sum.current}/${sum.eligible.length} study cards` }),
+    h("span", { class: `chip ${sum.eligible.length && sum.current === sum.eligible.length ? "ok" : ""}`, text: `${sum.current}/${sum.eligible.length} summary cards` }),
     h("span", { class: `chip ${p.rollup === "current" ? "ok" : p.rollup === "stale" ? "warn" : ""}`, text: rollupLabel }),
   ));
   det.append(h("div", { class: "class-head", style: "margin-top:.6rem" },
@@ -284,7 +284,7 @@ function classBlock(p) {
       ontoggle: (e) => { e.target.open ? S.openClasses.add(p.id) : S.openClasses.delete(p.id); } },
     h("summary", { class: "muted small", text: `Notes (${p.notes.length})` }),
     h("div", { class: "scroll-x" }, h("table", { class: "notes" },
-      h("thead", null, h("tr", null, ["Note", "Transcript", "Study card", "Search index", ""].map((t) => h("th", { text: t })))),
+      h("thead", null, h("tr", null, ["Note", "Transcript", "Summary card", "Search index", ""].map((t) => h("th", { text: t })))),
       h("tbody", null, rows)))));
   return det;
 }
@@ -325,7 +325,7 @@ function renderPipeline() {
           h("span", { class: "muted small", text: `Read from the notes app automatically; last sync ${ago(st.sync.last_ok_at)}${st.sync.last_error ? ` — last attempt failed: ${st.sync.last_error}` : ""}` }),
           h("span", { class: "spacer" }),
           h("button", { class: "btn small", onclick: async () => { try { await api("/api/sync", { method: "POST" }); await refresh(); toast("Synced"); } catch (e) { toast(e.message); } }, text: "Sync now" })),
-        h("p", { class: "muted small", text: `Transcription: ${st.whisper.model}, language "${st.whisper.language}" (${st.whisper.mode}). Study cards & chat: ${st.models.extract} / ${st.models.chat}. Change these under Settings. Nothing here starts on its own — every button below is a job you choose to run.` })),
+        h("p", { class: "muted small", text: `Transcription: ${st.whisper.model}, language "${st.whisper.language}" (${st.whisper.mode}). Summary cards & chat: ${st.models.extract} / ${st.models.chat}. Change these under Settings. Nothing here starts on its own — every button below is a job you choose to run.` })),
       st.overview.projects.length ? st.overview.projects.map(classBlock) : h("p", { class: "muted", text: "No classes yet — waiting for the first sync from the notes app." })),
     jobsPanel));
   window.scrollTo(0, scroll);
@@ -347,7 +347,7 @@ async function renderLibrary() {
   try { lib = await api(`/api/projects/${p.id}/library`); } catch (e) { body.replaceChildren(h("p", { class: "banner bad", text: e.message })); return; }
   if (lib.built === false) {
     body.replaceChildren(h("div", { class: "banner info" }, "Nothing has been built for this class yet. ",
-      h("a", { href: "#pipeline", text: "Go to Pipeline" }), " to transcribe recordings and build study cards."),
+      h("a", { href: "#pipeline", text: "Go to Pipeline" }), " to transcribe recordings and build summary cards."),
       noteList(p));
     return;
   }
@@ -585,7 +585,7 @@ async function renderSettings() {
     }));
     return [h("label", null, h("strong", { text: note.label }), h("div", { class: "muted small", text: note.help })), el];
   };
-  const ext = modelField("extract", { label: "Study cards & overviews", help: "Reads every note once (slow, runs when you press a button). Bake-off: qwen3.6:27b most accurate; gpt-oss:20b ~5× faster." });
+  const ext = modelField("extract", { label: "Summary cards & overviews", help: "Reads every note once (slow, runs when you press a button). Bake-off: qwen3.6:27b most accurate; gpt-oss:20b ~5× faster." });
   const cht = modelField("chat", { label: "Chat", help: "Answers your questions and writes quizzes." });
   const emb = modelField("embed", { label: "Search embeddings", help: "Changing this makes every note need re-indexing." });
   const wm = h("select", null, d.whisper_models.map((m) => h("option", { value: m, selected: m === s.whisper_model || undefined, text: m })));
