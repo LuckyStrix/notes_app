@@ -38,6 +38,7 @@ def _to_read(row: AppSettings) -> SettingsRead:
         embedding_model=row.embedding_model,
         ollama_vision_model=row.ollama_vision_model,
         whisper_model=row.whisper_model,
+        whisper_language=row.whisper_language,
         whisper_idle_unload_seconds=row.whisper_idle_unload_seconds,
         default_rag_top_k=row.default_rag_top_k,
         default_rag_similarity_floor=row.default_rag_similarity_floor,

@@ -435,7 +435,12 @@ function NoteRow({
       <Link to={`/projects/${projectId}/notes/${note.id}`} className="tree-row-link" draggable={false}>
         <span className="tree-icon">{typeIcon(note.type)}</span>
         <span className="tree-label">{note.title}</span>
-        {(note.status === "pending" || note.status === "processing") && (
+        {/* A recording that's just been uploaded is "pending" until you press Transcribe --
+            it isn't working on anything, so it gets a quiet dot instead of the busy one. */}
+        {note.status === "pending" && (note.type === "audio" || note.type === "video") && (
+          <span className="tree-status-dot idle" title="Not transcribed yet" />
+        )}
+        {(note.status === "processing" || (note.status === "pending" && note.type !== "audio" && note.type !== "video")) && (
           <span className="tree-status-dot processing" title="Processing" />
         )}
         {note.status === "error" && <span className="tree-status-dot error" title="Error" />}

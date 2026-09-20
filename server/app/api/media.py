@@ -13,6 +13,7 @@ from app.models.media import NoteFile, Transcript
 from app.models.note import Note
 from app.queue import DEFAULT_RETRY, job_queue
 from app.schemas.media import NoteFileRead, TranscriptRead
+from app.schemas.note import NoteRead
 from app.services.storage import resolve_within, sanitize_filename
 
 router = APIRouter(tags=["media"])
@@ -60,16 +61,50 @@ async def upload_media(note_id: uuid.UUID, file: UploadFile, db: AsyncSession = 
     await db.commit()
     await db.refresh(note_file)
 
-    if note.type in ("audio", "video"):
-        job_queue.enqueue(
-            "app.jobs.transcribe.transcribe_note", str(note_id), job_timeout=3600, retry=DEFAULT_RETRY
-        )
-    else:  # document
+    # Recordings are NOT transcribed automatically: transcription is GPU-heavy and slow,
+    # so it starts only when asked (POST /notes/{id}/transcribe). The note stays
+    # "pending" until then. Documents are cheap CPU text extraction and still run at once.
+    if note.type == "document":
         job_queue.enqueue(
             "app.jobs.extract_document.extract_document_text", str(note_id), job_timeout=300, retry=DEFAULT_RETRY
         )
 
     return note_file
+
+
+@router.post("/notes/{note_id}/transcribe", response_model=NoteRead)
+async def start_transcription(note_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """Queue transcription for an uploaded recording. Deliberately never overwrites:
+    a note that already has a transcript is refused, so this can't destroy one."""
+    note = await db.get(Note, note_id)
+    if not note:
+        raise HTTPException(status_code=404, detail="Note not found")
+    if note.type not in ("audio", "video"):
+        raise HTTPException(status_code=400, detail="Only audio and video notes can be transcribed")
+    if note.status == "processing":
+        raise HTTPException(status_code=409, detail="This note is already being processed")
+
+    has_file = (await db.execute(select(NoteFile.id).where(NoteFile.note_id == note_id))).first()
+    if not has_file:
+        raise HTTPException(status_code=409, detail="Upload a recording to this note first")
+    has_transcript = (await db.execute(select(Transcript.id).where(Transcript.note_id == note_id))).first()
+    if has_transcript:
+        raise HTTPException(status_code=409, detail="This note already has a transcript")
+
+    previous_status, previous_error = note.status, note.error_message
+    note.status = "processing"
+    note.error_message = None
+    await db.commit()
+    try:
+        job_queue.enqueue(
+            "app.jobs.transcribe.transcribe_note", str(note_id), job_timeout=3600, retry=DEFAULT_RETRY
+        )
+    except Exception as exc:  # noqa: BLE001 -- e.g. Redis down; don't leave the note stuck "processing"
+        note.status, note.error_message = previous_status, previous_error
+        await db.commit()
+        raise HTTPException(status_code=503, detail=f"Could not queue the transcription job: {exc}")
+    await db.refresh(note)
+    return note
 
 
 @router.get("/notes/{note_id}/media", response_model=NoteFileRead)

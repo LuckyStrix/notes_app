@@ -130,6 +130,8 @@ export function useNotes(projectId: string | undefined) {
     queryKey: ["notes", { projectId }],
     queryFn: () => api.get<Note[]>(`/notes?project_id=${projectId}`),
     enabled: !!projectId,
+    // Self-polls while any note is being transcribed/extracted so the sidebar dot clears on its own.
+    refetchInterval: (query) => (query.state.data?.some((n) => n.status === "processing") ? 3000 : false),
   });
 }
 
@@ -138,6 +140,8 @@ export function useNote(noteId: string | undefined) {
     queryKey: ["notes", noteId],
     queryFn: () => api.get<Note>(`/notes/${noteId}`),
     enabled: !!noteId,
+    // Same idea: pick up processing -> ready/error without needing a refresh.
+    refetchInterval: (query) => (query.state.data?.status === "processing" ? 3000 : false),
   });
 }
 
@@ -216,6 +220,18 @@ export function useTranscript(noteId: string | undefined, opts?: { poll?: boolea
     enabled: !!noteId,
     retry: false,
     refetchInterval: opts?.poll ? 3000 : false,
+  });
+}
+
+// Transcription is manual: uploading a recording does not start it.
+export function useTranscribeNote(projectId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (noteId: string) => api.post<Note>(`/notes/${noteId}/transcribe`, {}),
+    onSuccess: (_data, noteId) => {
+      qc.invalidateQueries({ queryKey: ["notes", noteId] });
+      qc.invalidateQueries({ queryKey: ["notes", { projectId }] });
+    },
   });
 }
 

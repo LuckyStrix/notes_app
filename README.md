@@ -73,7 +73,9 @@ Everything AI-related is switchable at runtime from the **Settings** page — no
 
 - **App name**: shown in the nav bar and browser tab title. Purely cosmetic, defaults to "notes_app" if left blank.
 - **LLM provider**: Ollama (local, default) or Claude API. Switching to Claude needs an API key (Settings, or `ANTHROPIC_API_KEY` in `.env`).
-- **Whisper model size**: `tiny`/`base`/`small`/`medium`/`large-v3`, traded off against transcription speed and VRAM. The worker loads a fresh model per transcription job and releases it immediately after, so a change here takes effect on the very next upload — no idle-unload timer needed, and it never sits resident in VRAM between jobs.
+- **Whisper model size**: `tiny`/`base`/`small`/`medium`/`large-v3`, traded off against transcription speed and VRAM. The worker loads a fresh model per transcription job and releases it immediately after, so a change here takes effect on the very next transcription — no idle-unload timer needed, and it never sits resident in VRAM between jobs.
+- **Whisper language**: a 2–3 letter code (default `en`), or `auto`. It's explicit by default because Whisper's auto-detect guesses from the first 30 seconds and has labelled English lectures as Welsh, producing unusable transcripts.
+- **Transcription is manual.** Uploading an audio/video recording does *not* start transcription (it's GPU-heavy and slow); the note shows "not transcribed" until you press **Transcribe** on it. A note that already has a transcript is never overwritten by that button. Documents (PDF/Word/text) are still extracted automatically on upload.
 - **Embedding model**: always local. Changing it requires re-indexing every note (different vector space) — the app doesn't do this automatically, so only change it if you're prepared to re-save/re-transcribe notes to rebuild embeddings.
 
 ## Chat, citations, and search

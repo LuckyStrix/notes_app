@@ -140,6 +140,7 @@ body {
 
 .tree-status-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .tree-status-dot.processing { background: #d97706; }
+.tree-status-dot.idle { background: var(--muted); opacity: 0.6; }
 .tree-status-dot.error { background: #dc2626; }
 
 .tree-row.dragging { opacity: 0.4; }

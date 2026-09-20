@@ -18,6 +18,10 @@ class AppSettings(Base):
             name="ck_app_settings_default_rag_similarity_floor",
         ),
         CheckConstraint("num_ctx > 0", name="ck_app_settings_num_ctx"),
+        CheckConstraint(
+            "whisper_language = 'auto' OR whisper_language ~ '^[a-z]{2,3}$'",
+            name="ck_app_settings_whisper_language",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
@@ -44,6 +48,10 @@ class AppSettings(Base):
     # with OCR text only, no caption, rather than hard-failing.
     ollama_vision_model: Mapped[str | None] = mapped_column(String(128))
     whisper_model: Mapped[str] = mapped_column(String(32), nullable=False, server_default="small")
+    # ISO 639 code Whisper is told the audio is in, or "auto" to let it guess.
+    # Explicit by default: auto-detect labelled English lectures as Welsh and
+    # produced unusable transcripts -- see app.services.transcription.
+    whisper_language: Mapped[str] = mapped_column(String(8), nullable=False, server_default="en")
     whisper_idle_unload_seconds: Mapped[int] = mapped_column(Integer, nullable=False, server_default="300")
     # Chat retrieval defaults -- how many note excerpts get pulled into context
     # per question, and how relevant (cosine similarity) one has to be to

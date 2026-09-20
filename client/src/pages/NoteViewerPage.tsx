@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
 import { useLocation, useParams } from "react-router-dom";
 
-import { useNote, useNoteFile, useNoteVersions, useRestoreNoteVersion, useTranscript, useUpdateNote, useUploadMedia } from "../api/hooks";
+import { useNote, useNoteFile, useNoteVersions, useRestoreNoteVersion, useSettings, useTranscribeNote, useTranscript, useUpdateNote, useUploadMedia } from "../api/hooks";
 import MediaPlayer, { type MediaPlayerHandle } from "../components/player/MediaPlayer";
 import TranscriptView from "../components/player/TranscriptView";
 import NoteHistoryPanel from "../components/notes/NoteHistoryPanel";
@@ -23,7 +23,11 @@ export default function NoteViewerPage() {
   const { data: note } = useNote(noteId);
   const isMedia = note?.type === "audio" || note?.type === "video";
   const isDocument = note?.type === "document";
-  const isProcessing = note?.status === "pending" || note?.status === "processing";
+  // Recordings are only transcribed when you press "Transcribe", so an uploaded recording
+  // sits at "pending" doing nothing -- that is NOT "processing". (Documents are still
+  // extracted automatically, so for them "pending" does mean work is about to happen.)
+  const awaitingTranscription = isMedia && note?.status === "pending";
+  const isProcessing = note?.status === "processing" || (note?.status === "pending" && !isMedia);
   // Text notes are always "ready" from the instant they're created -- nothing
   // in the app ever sets any other status for them, so the badge would just
   // read "ready" forever and tell the user nothing. It's only meaningful for
@@ -37,6 +41,8 @@ export default function NoteViewerPage() {
   const showDiagramsTab = (isDocument && isPdf) || note?.type === "video";
   const { data: transcript } = useTranscript(isMedia && note?.status === "ready" ? noteId : undefined);
   const uploadMedia = useUploadMedia();
+  const transcribeNote = useTranscribeNote(projectId);
+  const { data: appSettings } = useSettings();
   const updateNote = useUpdateNote(projectId!);
   const restoreVersion = useRestoreNoteVersion(projectId!);
   const { data: versions } = useNoteVersions(noteId);
@@ -271,7 +277,7 @@ export default function NoteViewerPage() {
 
       {showStatusBadge && (
         <div className="note-meta-row">
-          <span className={`badge badge-${note.status}`}>{note.status}</span>
+          <span className={`badge badge-${note.status}`}>{awaitingTranscription ? "not transcribed" : note.status}</span>
           {note.status === "error" && note.error_message && <span className="error">{note.error_message}</span>}
         </div>
       )}
@@ -394,7 +400,29 @@ export default function NoteViewerPage() {
                       {noteFile.original_filename}
                       {noteFile.duration_seconds ? ` · ${Math.round(noteFile.duration_seconds)}s` : ""}
                     </p>
-                    {isProcessing && <p className="muted">Transcribing… this page will update automatically.</p>}
+                    {(awaitingTranscription || note.status === "error") && (
+                      <div className="card" style={{ marginTop: "0.75rem" }}>
+                        <p style={{ marginTop: 0 }}>
+                          {note.status === "error"
+                            ? "Transcription didn't finish. You can try again."
+                            : "This recording hasn't been transcribed yet."}
+                        </p>
+                        <p className="muted">
+                          Transcription uses your GPU and can take a while, so it only starts when you ask.
+                          {appSettings && (
+                            <> It will use the <code>{appSettings.whisper_model}</code> model with language{" "}
+                            <code>{appSettings.whisper_language}</code> (change under Settings).</>
+                          )}
+                        </p>
+                        <button onClick={() => transcribeNote.mutate(noteId!)} disabled={transcribeNote.isPending}>
+                          {transcribeNote.isPending ? "Starting…" : note.status === "error" ? "Try again" : "Transcribe"}
+                        </button>
+                        {transcribeNote.isError && (
+                          <p className="error">{(transcribeNote.error as Error).message}</p>
+                        )}
+                      </div>
+                    )}
+                    {note.status === "processing" && <p className="muted">Transcribing… this page will update automatically.</p>}
                     {viewMode === "extracted" && transcript && (
                       <TranscriptView
                         segments={transcript.segments}

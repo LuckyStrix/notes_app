@@ -52,6 +52,10 @@ export default function SettingsPage() {
     setSaved(false);
   }
 
+  // Same rule the server enforces: a 2-3 letter lowercase code, or "auto".
+  const languageValue = form.whisper_language ?? settings.whisper_language;
+  const languageValid = /^(auto|[a-z]{2,3})$/.test(languageValue);
+
   function save() {
     updateSettings.mutate(form, { onSuccess: () => setSaved(true) });
   }
@@ -178,6 +182,24 @@ export default function SettingsPage() {
         <select value={form.whisper_model ?? settings.whisper_model} onChange={(e) => set("whisper_model", e.target.value)}>
           {WHISPER_MODELS.map((m) => <option key={m.name} value={m.name}>{m.name}</option>)}
         </select>
+        <div style={{ margin: "0.75rem 0" }}>
+          <label>
+            Spoken language{" "}
+            <input
+              type="text"
+              value={languageValue}
+              maxLength={4}
+              style={{ width: "5rem" }}
+              onChange={(e) => set("whisper_language", e.target.value.trim().toLowerCase())}
+            />
+          </label>
+          {!languageValid && <span className="error" style={{ marginLeft: "0.5rem" }}>Use a 2-3 letter code like en, or auto.</span>}
+          <p className="muted" style={{ margin: "0.35rem 0 0" }}>
+            Recordings are transcribed only when you press Transcribe on a note. The language is set explicitly (default{" "}
+            <code>en</code>) because Whisper's auto-detect has labelled English lectures as Welsh and produced unusable
+            transcripts. Set <code>auto</code> to let it guess.
+          </p>
+        </div>
         <table className="ref-table">
           <thead><tr><th>Model</th><th>VRAM</th><th>Speed</th><th>Quality</th></tr></thead>
           <tbody>
@@ -272,8 +294,11 @@ export default function SettingsPage() {
         <a href="/api/settings/database-export" className="button-link" download>Export database</a>
       </section>
 
-      <button onClick={save} disabled={updateSettings.isPending}>Save settings</button>
+      <button onClick={save} disabled={updateSettings.isPending || !languageValid}>Save settings</button>
       {saved && <span className="muted" style={{ marginLeft: "0.75rem" }}>Saved.</span>}
+      {updateSettings.isError && (
+        <span className="error" style={{ marginLeft: "0.75rem" }}>{(updateSettings.error as Error).message}</span>
+      )}
     </div>
   );
 }

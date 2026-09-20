@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.services.transcription import LANGUAGE_PATTERN
+
 
 class SettingsRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -16,6 +18,7 @@ class SettingsRead(BaseModel):
     embedding_model: str
     ollama_vision_model: str | None
     whisper_model: str
+    whisper_language: str
     whisper_idle_unload_seconds: int
     default_rag_top_k: int
     default_rag_similarity_floor: float
@@ -33,6 +36,7 @@ class SettingsUpdate(BaseModel):
     embedding_model: str | None = None
     ollama_vision_model: str | None = None
     whisper_model: str | None = None
+    whisper_language: str | None = Field(default=None, pattern=LANGUAGE_PATTERN)
     whisper_idle_unload_seconds: int | None = None
     default_rag_top_k: int | None = Field(default=None, ge=1, le=50)
     default_rag_similarity_floor: float | None = Field(default=None, ge=0, le=1)

@@ -11,6 +11,7 @@ from app.models.note import Note
 from app.models.settings import AppSettings
 from app.queue import DEFAULT_RETRY, job_queue
 from app.services.search import update_note_search_vector
+from app.services.transcription import resolve_language
 
 
 def transcribe_note(note_id: str) -> None:
@@ -40,6 +41,7 @@ async def _transcribe_note(note_id: str) -> None:
 
         app_settings = await db.get(AppSettings, 1)
         whisper_model_name = app_settings.whisper_model if app_settings else "small"
+        whisper_language = app_settings.whisper_language if app_settings else "en"
 
         note.status = "processing"
         await db.commit()
@@ -48,7 +50,7 @@ async def _transcribe_note(note_id: str) -> None:
 
         try:
             full_text, language, duration, segments = await asyncio.to_thread(
-                _run_whisper, file_path, whisper_model_name
+                _run_whisper, file_path, whisper_model_name, whisper_language
             )
         except Exception as exc:  # noqa: BLE001 -- surface any transcription failure on the note itself
             note.status = "error"
@@ -88,8 +90,13 @@ async def _transcribe_note(note_id: str) -> None:
     )
 
 
-def _run_whisper(file_path: str, model_name: str):
+def _run_whisper(file_path: str, model_name: str, language: str = "en"):
     """Blocking faster-whisper call -- runs in a worker thread via asyncio.to_thread.
+
+    `language` is passed explicitly (see services.transcription): left to
+    auto-detect, Whisper guesses from the first 30 seconds and labelled English
+    lectures as Welsh, then transcribed them as Welsh-looking gibberish. "auto"
+    (Settings) opts back in to auto-detection.
 
     vad_filter is deliberately off. It sounds like the right tool for "quiet
     recording produces no transcript," but measured against a real quiet
@@ -112,7 +119,11 @@ def _run_whisper(file_path: str, model_name: str):
 
     model = WhisperModel(model_name, device="cuda", compute_type="float16")
     segments_iter, info = model.transcribe(
-        file_path, word_timestamps=True, vad_filter=False, condition_on_previous_text=False
+        file_path,
+        language=resolve_language(language),
+        word_timestamps=True,
+        vad_filter=False,
+        condition_on_previous_text=False,
     )
 
     segments = []

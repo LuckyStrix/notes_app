@@ -180,6 +180,7 @@ export interface AppSettings {
   embedding_model: string;
   ollama_vision_model: string | null;
   whisper_model: string;
+  whisper_language: string;
   whisper_idle_unload_seconds: number;
   default_rag_top_k: number;
   default_rag_similarity_floor: number;
