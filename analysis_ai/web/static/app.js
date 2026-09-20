@@ -66,10 +66,17 @@ const ICON = { audio: "🎙", video: "🎬", document: "📄", text: "📝" };
 // ---------------------------------------------------------------- state
 const S = {
   status: null, health: null, settings: null, tab: null, statusKey: "",
-  openClasses: new Set(), seenClasses: new Set(), openLogs: new Set(),
+  openClasses: new Set(), seenClasses: new Set(), openLogs: new Set(), collapsedClasses: new Set(),
   chat: { scope: null, mode: "strict", messages: [], busy: false, controller: null },
   library: { project: null },
 };
+try {
+  const saved = JSON.parse(localStorage.getItem("aai-collapsed-classes") || "null");
+  if (Array.isArray(saved)) S.collapsedClasses = new Set(saved);
+} catch (_) { /* storage unavailable */ }
+function saveCollapsedClasses() {
+  try { localStorage.setItem("aai-collapsed-classes", JSON.stringify([...S.collapsedClasses])); } catch (_) { /* ignore */ }
+}
 try {
   const saved = JSON.parse(sessionStorage.getItem("aai-chat") || "null");
   if (saved) Object.assign(S.chat, { messages: saved.messages || [], scope: saved.scope ? new Set(saved.scope) : null, mode: saved.mode || "strict" });
@@ -248,12 +255,20 @@ function classBlock(p) {
     if (sum.media.length) S.openClasses.add(p.id);
   }
   const rollupLabel = { "no-cards": "no overview yet", none: "overview not built", stale: "overview out of date", current: "overview up to date" }[p.rollup];
+  const collapsed = S.collapsedClasses.has(p.id);
+  const toggleCollapsed = () => {
+    collapsed ? S.collapsedClasses.delete(p.id) : S.collapsedClasses.add(p.id);
+    saveCollapsedClasses();
+    renderPipeline();
+  };
   det.append(h("div", { class: "class-head" },
-    h("h2", { text: p.name }),
+    h("button", { class: "class-toggle", title: collapsed ? "Expand" : "Minimize", onclick: toggleCollapsed, text: collapsed ? "▸" : "▾" }),
+    h("h2", { style: "cursor:pointer", onclick: toggleCollapsed, text: p.name }),
     sum.media.length ? h("span", { class: `chip ${sum.pending.length ? "" : "ok"}`, text: `${sum.done}/${sum.media.length} recordings transcribed` }) : null,
     h("span", { class: `chip ${sum.eligible.length && sum.current === sum.eligible.length ? "ok" : ""}`, text: `${sum.current}/${sum.eligible.length} summary cards` }),
     h("span", { class: `chip ${p.rollup === "current" ? "ok" : p.rollup === "stale" ? "warn" : ""}`, text: rollupLabel }),
   ));
+  if (collapsed) return det;
   det.append(h("div", { class: "class-head", style: "margin-top:.6rem" },
     h("button", { class: "btn primary", disabled: !needsUpdate || undefined,
       title: "Builds cards for new/edited notes, then the class overview and search index. Never transcribes.",

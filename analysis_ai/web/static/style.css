@@ -63,6 +63,8 @@ textarea { width: 100%; resize: vertical; }
 .jobs-panel { position: sticky; top: 4.5rem; }
 .class-head { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
 .class-head h2 { margin: 0; }
+.class-toggle { background: none; border: none; color: var(--muted); cursor: pointer; padding: .1rem .35rem; font-size: .8rem; line-height: 1; border-radius: 4px; }
+.class-toggle:hover { background: var(--idle-bg); color: var(--fg); }
 table.notes { width: 100%; border-collapse: collapse; font-size: .88rem; margin-top: .6rem; }
 table.notes th { text-align: left; font-weight: 600; color: var(--muted); padding: .3rem .4rem; border-bottom: 1px solid var(--border); }
 table.notes td { padding: .35rem .4rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
