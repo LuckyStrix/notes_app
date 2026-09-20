@@ -8,6 +8,7 @@ import tempfile
 import threading
 import time
 import unittest
+import urllib.error
 from pathlib import Path
 from unittest import mock
 
@@ -155,6 +156,35 @@ class ModelDefaults(unittest.TestCase):
         body = ollama._body(cfg, "extract", [], stream=False, temperature=0.2)
         self.assertIs(body["think"], False)
         self.assertEqual(body["options"]["num_ctx"], cfg["num_ctx"]["extract"])
+
+
+class OllamaTuning(unittest.TestCase):
+    def test_per_model_options_reach_the_request_only_for_that_model(self):
+        from analysis_ai import ollama
+        cfg = config.load()
+        primary = ollama._body(cfg, "extract", [], stream=False, temperature=0.2)["options"]
+        self.assertEqual((primary["num_gpu"], primary["num_thread"]), (99, 4))
+        cfg["models"]["extract"] = "llama3.1:8b"  # a model picked later in Settings: no forced offload
+        other = ollama._body(cfg, "extract", [], stream=False, temperature=0.2)["options"]
+        self.assertNotIn("num_gpu", other)
+        self.assertNotIn("num_thread", other)
+
+    def test_forced_offload_is_dropped_on_retry_instead_of_failing_the_job(self):
+        from analysis_ai import ollama
+        sent = []
+
+        def fake_post(cfg, path, body, **kw):
+            sent.append(dict(body["options"]))
+            if len(sent) == 1:
+                raise urllib.error.HTTPError("x", 500, "cannot allocate VRAM", {}, None)
+            import io
+            return io.BytesIO(json.dumps({"message": {"content": "{\"ok\": true}"}}).encode())
+
+        with mock.patch.object(ollama, "_post", fake_post), mock.patch.object(ollama.time, "sleep", lambda s: None):
+            self.assertEqual(ollama.generate_json(config.load(), "extract", "p", {}), {"ok": True})
+        self.assertIn("num_gpu", sent[0])
+        self.assertNotIn("num_gpu", sent[1])  # retried without forcing full offload
+        self.assertEqual(sent[1]["num_thread"], 4)  # thread cap still applies
 
 
 class HttpGuards(unittest.TestCase):

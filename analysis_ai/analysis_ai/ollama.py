@@ -3,6 +3,7 @@ streaming chat, and embeddings. Each call takes a *stage* name ("extract",
 "chat") so the model and context size come from config, per stage."""
 import json
 import time
+import urllib.error
 import urllib.request
 from collections.abc import Iterator
 
@@ -11,6 +12,9 @@ def _body(cfg: dict, stage: str, messages: list[dict], *, stream: bool, temperat
           num_predict: int | None = None, keep_alive: str = "10m") -> dict:
     model = cfg["models"][stage]
     options = {"num_ctx": cfg["num_ctx"][stage], "temperature": temperature}
+    # Per-model tuning (num_gpu / num_thread), e.g. to stop a single CPU-resident layer from
+    # keeping every llama-server thread spinning. See config.py.
+    options.update(cfg.get("model_options", {}).get(model, {}))
     if num_predict:
         options["num_predict"] = num_predict
     body = {"model": model, "messages": messages, "stream": stream, "options": options, "keep_alive": keep_alive}
@@ -48,6 +52,10 @@ def generate_json(cfg: dict, stage: str, prompt: str, schema: dict, *, temperatu
         try:
             body = _body(cfg, stage, [{"role": "user", "content": prompt}], stream=False,
                          temperature=temperature, schema=schema, num_predict=num_predict)
+            if attempt > 0:
+                # Forcing every layer onto the GPU can fail if another app has taken VRAM.
+                # After a failure, let Ollama decide the split instead of failing the job.
+                body["options"].pop("num_gpu", None)
             with _post(cfg, "/api/chat", body) as resp:
                 content = json.load(resp)["message"]["content"]
             return json.loads(content)
@@ -59,7 +67,14 @@ def generate_json(cfg: dict, stage: str, prompt: str, schema: dict, *, temperatu
 
 def chat_stream(cfg: dict, stage: str, messages: list[dict], *, temperature: float = 0.3) -> Iterator[str]:
     body = _body(cfg, stage, messages, stream=True, temperature=temperature, keep_alive="30m")
-    with _post(cfg, "/api/chat", body) as resp:
+    try:
+        resp = _post(cfg, "/api/chat", body)
+    except urllib.error.HTTPError:
+        if "num_gpu" not in body["options"]:
+            raise
+        del body["options"]["num_gpu"]  # forced full offload was refused; let Ollama choose
+        resp = _post(cfg, "/api/chat", body)
+    with resp:
         for line in resp:
             if not line.strip():
                 continue

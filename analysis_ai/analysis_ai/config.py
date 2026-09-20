@@ -28,6 +28,12 @@ DEFAULTS = {
     # Ollama "think" setting per model. Models not listed use their own default, except Qwen
     # models, which ollama.py turns thinking off for (thinking + JSON schema output is unreliable).
     "think": {"gpt-oss:20b": "low", "qwen3.6:27b": False, "hf.co/unsloth/Qwen3.6-27B-GGUF:Q3_K_M": False},
+    # Extra Ollama request options per model. Ollama's automatic fit loaded this model as 64/65
+    # layers on the GPU, leaving ~2 GB of VRAM free, and the one layer on the CPU kept all 10
+    # llama-server threads busy-waiting (~40% CPU). num_gpu=99 = "put every layer on the GPU";
+    # num_thread=4 caps the threads, since with the model on the GPU the CPU has almost nothing
+    # to compute. (If forcing full offload is refused, ollama.py retries without num_gpu.)
+    "model_options": {"hf.co/unsloth/Qwen3.6-27B-GGUF:Q3_K_M": {"num_gpu": 99, "num_thread": 4}},
     # Notes with more text than this (e.g. a whole textbook) are indexed for
     # search only, not summarized by the LLM.
     "max_extract_chars": 150_000,
