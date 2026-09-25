@@ -26,7 +26,7 @@ from starlette.responses import FileResponse, JSONResponse, StreamingResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from . import chat, config, jobs, ollama, pipeline, status, store, sync, transcribe
+from . import backup, chat, config, jobs, ollama, pipeline, status, store, sync, transcribe
 from .notes_api import NotesAPI
 
 STATIC = config.PACKAGE_ROOT / "web" / "static"
@@ -86,6 +86,32 @@ def _sync_loop() -> None:
         time.sleep(max(30, cfg["sync_interval_seconds"]))
 
 
+# ---- backups (copying files, so it does not go through the GPU job queue) ------
+_backup_lock = threading.Lock()
+backup_state = {"running": False, "last_error": None, "last_result": None}
+BACKUP_CHECK_SECONDS = 1800
+
+
+def do_backup() -> dict:
+    with _backup_lock:
+        backup_state["running"] = True
+        try:
+            backup_state.update(last_result=backup.run(), last_error=None)
+        except Exception as exc:  # noqa: BLE001 -- a failed backup must not crash the service
+            backup_state["last_error"] = f"{type(exc).__name__}: {exc}"
+        finally:
+            backup_state["running"] = False
+    return dict(backup_state)
+
+
+def _backup_loop() -> None:
+    while True:
+        cfg = config.load()
+        if cfg["backup_enabled"] and backup.is_due(cfg["backup_frequency"]):
+            do_backup()
+        time.sleep(BACKUP_CHECK_SECONDS)
+
+
 manager: jobs.JobManager | None = None
 
 
@@ -94,6 +120,7 @@ def _startup() -> None:
     store.ensure_dirs()
     manager = jobs.JobManager(pipeline.run)
     threading.Thread(target=_sync_loop, name="auto-sync", daemon=True).start()
+    threading.Thread(target=_backup_loop, name="auto-backup", daemon=True).start()
 
 
 @contextlib.asynccontextmanager
@@ -322,6 +349,22 @@ async def api_save_settings(request: Request):
     return JSONResponse(await run_in_threadpool(_settings_payload))
 
 
+def _backups_payload() -> dict:
+    return {**backup.listing(), "running": backup_state["running"], "last_error": backup_state["last_error"]}
+
+
+async def api_backups(request: Request):
+    return JSONResponse(await run_in_threadpool(_backups_payload))
+
+
+async def api_run_backup(request: Request):
+    _require_json_header(request)
+    if backup_state["running"]:
+        raise HTTPException(409, "a backup is already running")
+    await run_in_threadpool(do_backup)
+    return JSONResponse(await run_in_threadpool(_backups_payload))
+
+
 app = Starlette(
     routes=[
         Route("/", index_page),
@@ -338,6 +381,8 @@ app = Starlette(
         Route("/api/chat", api_chat, methods=["POST"]),
         Route("/api/settings", api_settings),
         Route("/api/settings", api_save_settings, methods=["PUT"]),
+        Route("/api/backups", api_backups),
+        Route("/api/backups/run", api_run_backup, methods=["POST"]),
         Mount("/static", StaticFiles(directory=str(STATIC)), name="static"),
     ],
     exception_handlers={HTTPException: _on_http_error},

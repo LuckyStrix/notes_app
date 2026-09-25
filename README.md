@@ -54,6 +54,7 @@ The chat/keyword-extraction LLM is provider-agnostic (Ollama or Claude API, swit
 - `docker compose up -d` / `docker compose down` — start/stop the stack.
 - `docker compose logs -f worker` — watch transcription/embedding/keyword-extraction jobs as they run.
 - Media files live under `./uploads` (host path, configurable via `UPLOAD_LOCATION` in `.env`) and Postgres data under `./postgres-data` (`DB_DATA_LOCATION`) — back up both if you care about the data.
+- **Backups** (Settings → Scheduled backups): the worker can dump the database daily or weekly into `./backups` (`BACKUP_LOCATION`), keeping the last N. Each dump is re-read and checksummed after it's written and only kept if it passes, and retention only ever deletes dumps this schedule made — anything else in the folder is left alone. Media is a separate manual button, since a copy of `uploads/` is several GB.
 - Downloaded Whisper models are cached in the `whisper-cache` Docker volume, not re-downloaded per job.
 
 ## Tests

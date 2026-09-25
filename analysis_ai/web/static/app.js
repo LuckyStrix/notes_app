@@ -609,6 +609,10 @@ async function renderSettings() {
   const interval = h("input", { type: "number", value: s.sync_interval_seconds, min: 30, style: "width:8rem" });
   const topk = h("input", { type: "number", value: s.retrieval_top_k, min: 1, max: 40, style: "width:6rem" });
   const maxc = h("input", { type: "number", value: s.max_extract_chars, min: 10000, style: "width:10rem" });
+  const bk = h("input", { type: "checkbox", checked: s.backup_enabled || undefined });
+  const bfreq = h("select", null, ["daily", "weekly"].map((f) =>
+    h("option", { value: f, selected: f === s.backup_frequency || undefined, text: f === "daily" ? "Daily" : "Weekly" })));
+  const bkeep = h("input", { type: "number", value: s.backup_keep, min: 1, max: 60, style: "width:6rem" });
   const val = (el) => el.value;
   view.replaceChildren(h("div", { class: "card" }, h("h2", { text: "Settings" }),
     d.ollama_error ? h("div", { class: "banner bad", text: `Ollama isn't reachable (${d.ollama_error}) — type model names by hand.` }) : null,
@@ -618,17 +622,46 @@ async function renderSettings() {
       h("label", null, h("strong", { text: "Spoken language" }), h("div", { class: "muted small", text: "Forced, never auto-detected: auto-detect mislabelled English lectures as Welsh." })), lang,
       h("label", null, h("strong", { text: "Auto-sync from notes app" }), h("div", { class: "muted small", text: "Read-only check for new/edited/deleted notes. Never runs anything expensive." })), h("div", null, auto, " every ", interval, " seconds"),
       h("label", null, h("strong", { text: "Passages per answer" })), topk,
-      h("label", null, h("strong", { text: "Largest note to summarise" }), h("div", { class: "muted small", text: "Bigger documents (textbooks) are searchable but not summarised. Characters." })), maxc),
+      h("label", null, h("strong", { text: "Largest note to summarise" }), h("div", { class: "muted small", text: "Bigger documents (textbooks) are searchable but not summarised. Characters." })), maxc,
+      h("label", null, h("strong", { text: "Back up automatically" }), h("div", { class: "muted small", text: "Archives data/ — transcripts, summary cards, overviews, search index. Checked after every run and only kept if it passes." })),
+      h("div", null, bk, " ", bfreq, " keeping the last ", bkeep)),
     h("div", { style: "margin-top:1rem" }, h("button", { class: "btn primary", onclick: async () => {
       try {
         await api("/api/settings", { method: "PUT", body: {
           models: { extract: val(ext[1]), chat: val(cht[1]), embed: val(emb[1]) },
           whisper_model: wm.value, whisper_language: lang.value.trim().toLowerCase(), auto_sync: auto.checked,
           sync_interval_seconds: Number(interval.value), retrieval_top_k: Number(topk.value), max_extract_chars: Number(maxc.value),
+          backup_enabled: bk.checked, backup_frequency: bfreq.value, backup_keep: Number(bkeep.value),
         } });
         toast("Saved"); await refresh();
       } catch (e) { toast(e.message); }
-    }, text: "Save settings" }))));
+    }, text: "Save settings" }))),
+    await renderBackups());
+}
+
+async function renderBackups() {
+  let d;
+  try { d = await api("/api/backups"); } catch (e) { return h("div", { class: "banner bad", text: e.message }); }
+  const runBtn = h("button", { class: "btn", onclick: async () => {
+    runBtn.disabled = true; runBtn.textContent = "Backing up…";
+    try { await api("/api/backups/run", { method: "POST", body: {} }); toast("Backed up"); } catch (e) { toast(e.message); }
+    renderSettings();
+  }, text: "Back up now" });
+  const failed = d.status && d.status.status === "failed";
+  return h("div", { class: "card" }, h("h2", { text: "Backups" }),
+    d.mounted ? null : h("div", { class: "banner bad", text: `${d.directory} isn't mounted — set AAI_BACKUP_LOCATION in docker-compose.yml and restart.` }),
+    failed ? h("div", { class: "banner bad", text: `Last backup failed: ${d.status.error}` }) : null,
+    h("p", { class: "muted small", text: `Written to ${d.directory}, alongside the notes app's database backups. Older ones past the "keep" count are deleted only once a new one passes its check — and only ever ones made here, never anything else in that folder.` }),
+    h("div", { style: "margin-bottom:0.75rem" }, runBtn),
+    d.backups.length ? h("table", { class: "notes" },
+      h("thead", null, h("tr", null, ...["Backup", "When", "Size", "Files", "Checked"].map((t) => h("th", { text: t })))),
+      h("tbody", null, ...d.backups.map((b) => h("tr", null,
+        h("td", null, h("code", { text: b.file })),
+        h("td", { text: new Date(b.created_at).toLocaleString() }),
+        h("td", { text: `${(b.size_bytes / 1e6).toFixed(1)} MB` }),
+        h("td", { text: String(b.file_count ?? "") }),
+        h("td", { text: b.validated ? "✓" : "—" })))))
+      : h("p", { class: "muted", text: "No backups yet." }));
 }
 
 // ---------------------------------------------------------------- router

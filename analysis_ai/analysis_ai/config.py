@@ -45,6 +45,12 @@ DEFAULTS = {
     # Web service.
     "auto_sync": True,
     "sync_interval_seconds": 120,
+    # Backups of data/ (transcripts, summary cards, overviews, search index) into
+    # BACKUPS_DIR. Off by default; see backup.py. Everything in data/ is
+    # reproducible in principle, but only by re-running hours of Whisper and LLM work.
+    "backup_enabled": False,
+    "backup_frequency": "daily",
+    "backup_keep": 7,
     # "auto": run Whisper in a throwaway docker container when docker is on PATH,
     # or directly when running inside the analysis_ai container.
     "transcribe_mode": "auto",
@@ -65,7 +71,16 @@ EDITABLE = {
     "sync_interval_seconds": int,
     "retrieval_top_k": int,
     "max_extract_chars": int,
+    "backup_enabled": bool,
+    "backup_frequency": str,
+    "backup_keep": int,
 }
+
+BACKUP_FREQUENCIES = ("daily", "weekly")
+# Bind-mounted from the host (../backups by default, i.e. the same folder the
+# notes app backs up into) -- see docker-compose.yml. The CLI writes to the same
+# host folder directly.
+BACKUPS_DIR = Path("/backups") if os.environ.get("AAI_IN_CONTAINER") else REPO_ROOT / "backups"
 
 
 def _merge(base: dict, override: dict) -> dict:
@@ -120,10 +135,16 @@ def save_editable(updates: dict) -> dict:
             if not isinstance(value, str) or not value.isalpha() or not 2 <= len(value) <= 3 or not value.islower():
                 raise ValueError("whisper_language must be a 2-3 letter lowercase code, e.g. en")
             current[key] = value
-        elif key == "auto_sync":
+        elif key in ("auto_sync", "backup_enabled"):
             if not isinstance(value, bool):
-                raise ValueError("auto_sync must be true or false")
+                raise ValueError(f"{key} must be true or false")
             current[key] = value
+        elif key == "backup_frequency":
+            if value not in BACKUP_FREQUENCIES:
+                raise ValueError(f"backup_frequency must be one of {list(BACKUP_FREQUENCIES)}")
+            current[key] = value
+        elif key == "backup_keep":
+            current[key] = number(value, key, 1, 60)
         elif key == "sync_interval_seconds":
             current[key] = number(value, key, 30, 86400)
         elif key == "retrieval_top_k":

@@ -25,6 +25,9 @@ services:
       - ${AAI_DATA_LOCATION:-./data}:/data
       # The notes app's uploads: READ-ONLY. Only used to feed recordings to Whisper.
       - ${AAI_UPLOADS_LOCATION:-../uploads}:/media:ro
+      # Where backups of /data are written. Defaults to the same folder the notes app
+      # backs up into; point it at another drive to keep backups off this one.
+      - ${AAI_BACKUP_LOCATION:-../backups}:/backups
       - whisper-cache:/root/.cache/huggingface
     extra_hosts:
       - "host.docker.internal:host-gateway"

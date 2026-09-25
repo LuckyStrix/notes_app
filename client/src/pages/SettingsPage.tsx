@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { useDatabaseSize, useOllamaModels, useSettings, useUpdateSettings } from "../api/hooks";
+import { useBackups, useDatabaseSize, useOllamaModels, useRunBackup, useSettings, useUpdateSettings } from "../api/hooks";
 import type { AppSettings } from "../api/types";
 
 const RECOMMENDED_CHAT_MODELS = [
@@ -36,7 +36,9 @@ export default function SettingsPage() {
   const { data: settings } = useSettings();
   const { data: ollamaModels, error: ollamaError } = useOllamaModels();
   const { data: databaseSize } = useDatabaseSize();
+  const { data: backups } = useBackups();
   const updateSettings = useUpdateSettings();
+  const runBackup = useRunBackup();
 
   const [form, setForm] = useState<Partial<AppSettings> & { anthropic_api_key?: string }>({});
   const [saved, setSaved] = useState(false);
@@ -47,10 +49,16 @@ export default function SettingsPage() {
 
   if (!settings) return <p className="page">Loading…</p>;
 
-  function set<K extends string>(key: K, value: string | number) {
+  function set<K extends string>(key: K, value: string | number | boolean) {
     setForm((f) => ({ ...f, [key]: value }));
     setSaved(false);
   }
+
+  // Surfaced on its own line: a backup that failed leaves nothing in the list
+  // below to hint that anything went wrong.
+  const lastFailure = (["db", "media"] as const)
+    .map((kind) => ({ kind, ...(backups?.status?.[kind] ?? {}) }))
+    .find((s) => s.status === "failed");
 
   // Same rule the server enforces: a 2-3 letter lowercase code, or "auto".
   const languageValue = form.whisper_language ?? settings.whisper_language;
@@ -292,6 +300,89 @@ export default function SettingsPage() {
           is usually somewhat smaller than this).
         </p>
         <a href="/api/settings/database-export" className="button-link" download>Export database</a>
+      </section>
+
+      <section className="card">
+        <h2>Scheduled backups</h2>
+        <p className="muted">
+          Keeps its own dated, compressed <code>pg_dump</code>s on disk instead of handing you one download. Every
+          backup is checked after it's written (the archive is re-read end to end and checksummed) and only kept if
+          it passes, so a truncated dump never quietly takes a good one's place.
+        </p>
+        <label className="form-inline">
+          <input
+            type="checkbox"
+            checked={form.backup_enabled ?? settings.backup_enabled}
+            onChange={(e) => set("backup_enabled", e.target.checked)}
+          />
+          Back up the database automatically
+        </label>
+        <div className="form-inline">
+          <label>
+            Frequency
+            <select
+              value={form.backup_frequency ?? settings.backup_frequency}
+              onChange={(e) => set("backup_frequency", e.target.value)}
+            >
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+            </select>
+          </label>
+          <label>
+            Keep last
+            <input
+              type="number"
+              min={1}
+              max={60}
+              value={form.backup_keep ?? settings.backup_keep}
+              onChange={(e) => set("backup_keep", Number(e.target.value))}
+            />
+          </label>
+        </div>
+        <p className="muted">
+          Older backups beyond that count are deleted once a new one passes validation — only ever ones made by this
+          schedule. Anything else in the folder (a dump you made by hand) is left alone.
+        </p>
+        <p className="muted">
+          Written to <code>{backups?.directory ?? "/backups"}</code> inside the worker container
+          {backups && !backups.mounted && " — not mounted yet"}. To send them somewhere else, like an external drive,
+          set <code>BACKUP_LOCATION</code> in <code>.env</code> and restart the stack; it can't be changed from here,
+          since the folder is mounted when the container starts.
+        </p>
+
+        <div className="form-inline">
+          <button onClick={() => runBackup.mutate("db")} disabled={runBackup.isPending}>Back up now</button>
+          <button onClick={() => runBackup.mutate("media")} disabled={runBackup.isPending}>Copy media files now</button>
+        </div>
+        <p className="muted">
+          "Copy media files" archives the whole uploads folder — every recording and document, several GB of it, so
+          it takes a while and is manual on purpose rather than part of the schedule. The same "keep last" count
+          applies to those copies.
+        </p>
+        {runBackup.isError && <p className="error">{(runBackup.error as Error).message}</p>}
+        {lastFailure && (
+          <p className="error">
+            Last {lastFailure.kind === "media" ? "media" : "database"} backup failed: {lastFailure.error}
+          </p>
+        )}
+
+        {backups && backups.backups.length > 0 ? (
+          <table className="ref-table">
+            <thead><tr><th>Backup</th><th>When</th><th>Size</th><th>Checked</th></tr></thead>
+            <tbody>
+              {backups.backups.map((b) => (
+                <tr key={b.file}>
+                  <td><code>{b.file}</code></td>
+                  <td>{new Date(b.created_at).toLocaleString()}{b.source === "manual" ? " (manual)" : ""}</td>
+                  <td>{formatBytes(b.size_bytes)}</td>
+                  <td>{b.validated ? "✓" : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="muted">No backups yet.</p>
+        )}
       </section>
 
       <button onClick={save} disabled={updateSettings.isPending || !languageValid}>Save settings</button>

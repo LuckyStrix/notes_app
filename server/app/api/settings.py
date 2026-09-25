@@ -1,18 +1,20 @@
 import asyncio
-import os
 from datetime import datetime, timezone
-from urllib.parse import unquote, urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from ollama import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from app.config import settings as app_config
 from app.db import get_db
+from app.jobs.backup import run_media_backup_job, run_scheduled_db_backup
 from app.models.settings import AppSettings
+from app.queue import DEFAULT_RETRY, job_queue
 from app.schemas.settings import SettingsRead, SettingsUpdate
+from app.services import backup
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -43,6 +45,9 @@ def _to_read(row: AppSettings) -> SettingsRead:
         default_rag_top_k=row.default_rag_top_k,
         default_rag_similarity_floor=row.default_rag_similarity_floor,
         num_ctx=row.num_ctx,
+        backup_enabled=row.backup_enabled,
+        backup_frequency=row.backup_frequency,
+        backup_keep=row.backup_keep,
         updated_at=row.updated_at,
     )
 
@@ -94,31 +99,16 @@ async def get_database_size(db: AsyncSession = Depends(get_db)):
     return {"size_bytes": size_bytes}
 
 
-def _pg_dump_command() -> tuple[list[str], dict[str, str]]:
-    """Builds a pg_dump invocation from DATABASE_URL. The password goes
-    through PGPASSWORD (not argv) so it doesn't show up in `docker top`/`ps`
-    output inside the container."""
-    parsed = urlparse(app_config.database_url.replace("postgresql+asyncpg", "postgresql", 1))
-    dbname = parsed.path.lstrip("/")
-    if not parsed.hostname or not dbname:
-        raise HTTPException(status_code=500, detail="DATABASE_URL is missing a host or database name")
-    args = [
-        "pg_dump",
-        "-h", parsed.hostname,
-        "-p", str(parsed.port or 5432),
-        "-U", unquote(parsed.username or ""),
-        dbname,
-    ]
-    env = {**os.environ, "PGPASSWORD": unquote(parsed.password or "")}
-    return args, env
-
-
 @router.get("/database-export")
 async def export_database():
     """Streams a full `pg_dump` of the database as a downloadable .sql file --
     an on-demand, UI-triggered alternative to a manual
-    `docker compose exec postgres pg_dump ...` backup."""
-    args, env = _pg_dump_command()
+    `docker compose exec postgres pg_dump ...` backup. Distinct from the
+    managed backups below: nothing is kept server-side, and nothing is pruned."""
+    try:
+        args, env = backup.pg_dump_command()
+    except backup.BackupError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
     process = await asyncio.create_subprocess_exec(
         *args, env=env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
@@ -146,3 +136,26 @@ async def export_database():
         media_type="application/sql",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get("/backups")
+async def list_backups():
+    """Every managed backup, newest first, plus how the last run of each kind
+    went. The server only ever reads /backups; the worker writes it."""
+    return await run_in_threadpool(backup.list_backups)
+
+
+@router.post("/backups/run")
+async def run_backup_now():
+    """Runs a database backup right now, regardless of the schedule. The work
+    happens in the worker, so this returns as soon as it is queued."""
+    job = job_queue.enqueue(run_scheduled_db_backup, "manual", retry=DEFAULT_RETRY)
+    return {"job_id": job.id, "kind": "db"}
+
+
+@router.post("/backups/media")
+async def run_media_backup_now():
+    """Copies the uploads folder. Manual only -- it is several GB a run, which
+    is why nothing schedules it."""
+    job = job_queue.enqueue(run_media_backup_job, retry=DEFAULT_RETRY, job_timeout=7200)
+    return {"job_id": job.id, "kind": "media"}

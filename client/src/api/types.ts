@@ -185,5 +185,36 @@ export interface AppSettings {
   default_rag_top_k: number;
   default_rag_similarity_floor: number;
   num_ctx: number;
+  backup_enabled: boolean;
+  backup_frequency: "daily" | "weekly";
+  backup_keep: number;
   updated_at: string;
+}
+
+export interface BackupEntry {
+  kind: "db" | "media";
+  file: string;
+  source: "scheduled" | "manual";
+  created_at: string;
+  size_bytes: number;
+  sha256: string;
+  validated: boolean;
+  file_count?: number;
+  duration_seconds?: number;
+}
+
+export interface BackupRunStatus {
+  status?: "ok" | "failed";
+  error?: string | null;
+  file?: string;
+  last_run_at?: string;
+  last_success_at?: string;
+  pruned?: string[];
+}
+
+export interface BackupList {
+  mounted: boolean;
+  directory: string;
+  backups: BackupEntry[];
+  status: { db?: BackupRunStatus; media?: BackupRunStatus };
 }

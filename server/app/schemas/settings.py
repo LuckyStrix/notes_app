@@ -23,6 +23,9 @@ class SettingsRead(BaseModel):
     default_rag_top_k: int
     default_rag_similarity_floor: float
     num_ctx: int
+    backup_enabled: bool
+    backup_frequency: Literal["daily", "weekly"]
+    backup_keep: int
     updated_at: datetime
 
 
@@ -41,3 +44,6 @@ class SettingsUpdate(BaseModel):
     default_rag_top_k: int | None = Field(default=None, ge=1, le=50)
     default_rag_similarity_floor: float | None = Field(default=None, ge=0, le=1)
     num_ctx: int | None = Field(default=None, ge=1)
+    backup_enabled: bool | None = None
+    backup_frequency: Literal["daily", "weekly"] | None = None
+    backup_keep: int | None = Field(default=None, ge=1, le=60)

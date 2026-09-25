@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "./client";
-import type { AppSettings, ChatMessage, ChatSession, Diagram, DiagramCandidate, Graph, GraphSummary, Group, Note, NoteFile, NoteType, NoteVersion, Project, SearchResult, Transcript } from "./types";
+import type { AppSettings, BackupList, ChatMessage, ChatSession, Diagram, DiagramCandidate, Graph, GraphSummary, Group, Note, NoteFile, NoteType, NoteVersion, Project, SearchResult, Transcript } from "./types";
 
 // Projects
 
@@ -447,5 +447,25 @@ export function useDatabaseSize() {
   return useQuery({
     queryKey: ["settings", "database-size"],
     queryFn: () => api.get<{ size_bytes: number }>("/settings/database-size"),
+  });
+}
+
+// Backups
+
+export function useBackups() {
+  return useQuery({
+    queryKey: ["settings", "backups"],
+    queryFn: () => api.get<BackupList>("/settings/backups"),
+    // Backups run in the worker, so the only way to notice one finishing is to ask again.
+    refetchInterval: 5000,
+  });
+}
+
+export function useRunBackup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (kind: "db" | "media") =>
+      api.post<{ job_id: string }>(kind === "media" ? "/settings/backups/media" : "/settings/backups/run", {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["settings", "backups"] }),
   });
 }

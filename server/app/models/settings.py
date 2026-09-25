@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, Float, Integer, String, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 
@@ -22,6 +22,8 @@ class AppSettings(Base):
             "whisper_language = 'auto' OR whisper_language ~ '^[a-z]{2,3}$'",
             name="ck_app_settings_whisper_language",
         ),
+        CheckConstraint("backup_frequency IN ('daily','weekly')", name="ck_app_settings_backup_frequency"),
+        CheckConstraint("backup_keep > 0", name="ck_app_settings_backup_keep"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
@@ -69,4 +71,12 @@ class AppSettings(Base):
     # host struggles, or upward if answers still seem to miss early context on
     # long chat sessions.
     num_ctx: Mapped[int] = mapped_column(Integer, nullable=False, server_default="8192")
+    # Scheduled database backups, written by the worker to the mounted /backups
+    # folder -- see app.services.backup. Off by default: the folder only exists
+    # if BACKUP_LOCATION is mounted, and backups are the user's call to make.
+    # Media (uploads/) is deliberately not on this schedule; it is a separate,
+    # manual action, since it is ~4GB a copy.
+    backup_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    backup_frequency: Mapped[str] = mapped_column(String(16), nullable=False, server_default="daily")
+    backup_keep: Mapped[int] = mapped_column(Integer, nullable=False, server_default="7")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

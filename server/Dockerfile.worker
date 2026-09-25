@@ -2,8 +2,10 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# postgresql-client is for pg_dump: scheduled backups run here, not in the
+# server container, since this is the one with write access to /backups.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg libpq5 tesseract-ocr \
+    ffmpeg libpq5 postgresql-client tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt requirements-worker.txt ./

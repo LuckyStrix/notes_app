@@ -32,6 +32,9 @@ services:
     volumes:
       - ${UPLOAD_LOCATION:-./uploads}:/data
       - ./server:/app
+      # Read-only: the Settings page lists backups and their validation status,
+      # but only the worker ever writes them.
+      - ${BACKUP_LOCATION:-./backups}:/backups:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -56,6 +59,9 @@ services:
     volumes:
       - ${UPLOAD_LOCATION:-./uploads}:/data
       - whisper-cache:/root/.cache/huggingface
+      # Where scheduled backups are written. Point BACKUP_LOCATION at another
+      # drive to keep them off this one.
+      - ${BACKUP_LOCATION:-./backups}:/backups
     extends:
       file: hwaccel.worker.yml
       service: cuda
