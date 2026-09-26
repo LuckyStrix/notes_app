@@ -1,0 +1,26 @@
+# Optional: send backups to a network share instead of ./backups.
+#
+# Docker Desktop can't see mapped drive letters (Z:), so the share is mounted by
+# Docker itself as a CIFS volume. Turn it on by adding this to .env (see .env.example):
+#
+#   COMPOSE_FILE=docker-compose.yml;docker-compose.nas.yml
+#   NAS_USER=...
+#   NAS_PASSWORD=...
+#
+# Then `docker compose up -d` as usual. This replaces the /backups bind mounts in
+# docker-compose.yml (compose matches volumes by container path). Nothing else changes.
+services:
+  server:
+    volumes:
+      - nas-backups:/backups:ro
+  worker:
+    volumes:
+      - nas-backups:/backups
+
+volumes:
+  nas-backups:
+    driver: local
+    driver_opts:
+      type: cifs
+      device: "//${NAS_HOST:-100.125.25.30}/${NAS_SHARE:-Lucky-NAS}/${NAS_BACKUP_PATH:-File Backups/notes_app_backups}"
+      o: "addr=${NAS_HOST:-100.125.25.30},username=${NAS_USER:?set NAS_USER in .env},password=${NAS_PASSWORD:?set NAS_PASSWORD in .env},vers=3.0,uid=0,gid=0,file_mode=0644,dir_mode=0755"

@@ -1,0 +1,18 @@
+# Optional: send analysis_ai's backups to the same network share the notes app uses.
+# The share settings live in the notes app's .env (see ../.env.example), so pass it in:
+#
+#   docker compose --env-file .env -f analysis_ai/docker-compose.yml -f analysis_ai/docker-compose.nas.yml up -d --build
+#
+# (from the repo root). Replaces the /backups bind mount in docker-compose.yml.
+services:
+  analysis:
+    volumes:
+      - nas-backups:/backups
+
+volumes:
+  nas-backups:
+    driver: local
+    driver_opts:
+      type: cifs
+      device: "//${NAS_HOST:-100.125.25.30}/${NAS_SHARE:-Lucky-NAS}/${NAS_BACKUP_PATH:-File Backups/notes_app_backups}"
+      o: "addr=${NAS_HOST:-100.125.25.30},username=${NAS_USER:?set NAS_USER in .env},password=${NAS_PASSWORD:?set NAS_PASSWORD in .env},vers=3.0,uid=0,gid=0,file_mode=0644,dir_mode=0755"
