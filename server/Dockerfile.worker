@@ -2,10 +2,19 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# postgresql-client is for pg_dump: scheduled backups run here, not in the
-# server container, since this is the one with write access to /backups.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg libpq5 postgresql-client tesseract-ocr \
+# pg_dump is for scheduled backups, which run here (the container with write
+# access to /backups). It must be the same major version as the database:
+# Debian's own postgresql-client is 17, and a 17 dump starts with
+# `SET transaction_timeout`, which a 16 server rejects -- so a strict restore
+# (ON_ERROR_STOP / single transaction) fails on the first line. Keep the 16
+# here in step with the pgvector/pgvector:pg16 image in docker-compose.yml.
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
+    && install -d /usr/share/keyrings \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /usr/share/keyrings/pgdg.asc \
+    && . /etc/os-release \
+    && echo "deb [signed-by=/usr/share/keyrings/pgdg.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg libpq5 postgresql-client-16 tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt requirements-worker.txt ./
