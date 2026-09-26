@@ -11,7 +11,10 @@ services:
       - ${DB_DATA_LOCATION:-./postgres-data}:/var/lib/postgresql/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-notes}"]
+      # -d matters: without it pg_isready probes a database named after the
+      # user ("notes"), which doesn't exist, and Postgres logs a FATAL line on
+      # every check even though the result is still "ready".
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-notes} -d ${DB_NAME:-notes_app}"]
       interval: 5s
       timeout: 5s
       retries: 10
