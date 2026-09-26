@@ -56,6 +56,7 @@ export default function SettingsPage() {
 
   // Surfaced on its own line: a backup that failed leaves nothing in the list
   // below to hint that anything went wrong.
+  const mediaStatus = backups?.status?.media;
   const lastFailure = (["db", "media"] as const)
     .map((kind) => ({ kind, ...(backups?.status?.[kind] ?? {}) }))
     .find((s) => s.status === "failed");
@@ -352,13 +353,22 @@ export default function SettingsPage() {
 
         <div className="form-inline">
           <button onClick={() => runBackup.mutate("db")} disabled={runBackup.isPending}>Back up now</button>
-          <button onClick={() => runBackup.mutate("media")} disabled={runBackup.isPending}>Copy media files now</button>
+          <button onClick={() => runBackup.mutate("media")} disabled={runBackup.isPending}>Sync media files now</button>
         </div>
         <p className="muted">
-          "Copy media files" archives the whole uploads folder — every recording and document, several GB of it, so
-          it takes a while and is manual on purpose rather than part of the schedule. The same "keep last" count
-          applies to those copies.
+          "Sync media files" copies every recording, document and diagram your notes reference into a{" "}
+          <code>media</code> folder next to the backups, keeping the same layout. The first run is several GB; after
+          that it only copies what's new. Each file is checked against the original, and files you've since deleted
+          are kept in the backup. It's manual on purpose rather than part of the schedule.
         </p>
+        {mediaStatus?.status === "ok" && (
+          <p className="muted">
+            Last media sync {mediaStatus.last_success_at ? new Date(mediaStatus.last_success_at).toLocaleString() : ""}:{" "}
+            {mediaStatus.copied} copied, {mediaStatus.unchanged} already up to date — {mediaStatus.total_files} files (
+            {formatBytes(mediaStatus.total_bytes ?? 0)}) in the backup
+            {mediaStatus.missing_count ? `; ${mediaStatus.missing_count} referenced files were missing from uploads` : ""}.
+          </p>
+        )}
         {runBackup.isError && <p className="error">{(runBackup.error as Error).message}</p>}
         {lastFailure && (
           <p className="error">

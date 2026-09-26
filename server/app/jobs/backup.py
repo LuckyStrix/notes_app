@@ -16,8 +16,11 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from rq.registry import StartedJobRegistry
+from sqlalchemy import select
 
 from app.db import async_session
+from app.models.diagram import Diagram
+from app.models.media import NoteFile
 from app.models.settings import AppSettings
 from app.queue import DEFAULT_RETRY, job_queue
 from app.services import backup
@@ -47,15 +50,14 @@ def _is_due(frequency: str) -> bool:
     return last is None or datetime.now(timezone.utc) - last >= INTERVALS[frequency]
 
 
-def run_media_backup_job() -> dict:
-    return asyncio.run(_run_media_backup())
+def run_media_sync_job() -> dict:
+    return asyncio.run(_run_media_sync())
 
 
-async def _run_media_backup() -> dict:
+async def _run_media_sync() -> dict:
     async with async_session() as db:
-        row = await db.get(AppSettings, 1)
-        keep = row.backup_keep if row else 7
-    return backup.run_media_backup(keep)
+        paths = (await db.execute(select(NoteFile.storage_path).union(select(Diagram.storage_path)))).scalars().all()
+    return backup.run_media_sync(list(paths))
 
 
 def _backup_already_pending() -> bool:

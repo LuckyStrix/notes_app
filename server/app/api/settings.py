@@ -10,7 +10,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.config import settings as app_config
 from app.db import get_db
-from app.jobs.backup import run_media_backup_job, run_scheduled_db_backup
+from app.jobs.backup import run_media_sync_job, run_scheduled_db_backup
 from app.models.settings import AppSettings
 from app.queue import DEFAULT_RETRY, job_queue
 from app.schemas.settings import SettingsRead, SettingsUpdate
@@ -155,7 +155,8 @@ async def run_backup_now():
 
 @router.post("/backups/media")
 async def run_media_backup_now():
-    """Copies the uploads folder. Manual only -- it is several GB a run, which
+    """Syncs the referenced media files into backups/media -- only what is new
+    or changed since last time. Manual only: the first run is several GB, which
     is why nothing schedules it."""
-    job = job_queue.enqueue(run_media_backup_job, retry=DEFAULT_RETRY, job_timeout=7200)
+    job = job_queue.enqueue(run_media_sync_job, retry=DEFAULT_RETRY, job_timeout=7200)
     return {"job_id": job.id, "kind": "media"}

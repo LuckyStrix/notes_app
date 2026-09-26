@@ -192,14 +192,13 @@ export interface AppSettings {
 }
 
 export interface BackupEntry {
-  kind: "db" | "media";
+  kind: "db";
   file: string;
   source: "scheduled" | "manual";
   created_at: string;
   size_bytes: number;
   sha256: string;
   validated: boolean;
-  file_count?: number;
   duration_seconds?: number;
 }
 
@@ -210,6 +209,13 @@ export interface BackupRunStatus {
   last_run_at?: string;
   last_success_at?: string;
   pruned?: string[];
+  // Media sync only:
+  copied?: number;
+  unchanged?: number;
+  missing_count?: number;
+  total_files?: number;
+  total_bytes?: number;
+  copied_bytes?: number;
 }
 
 export interface BackupList {
