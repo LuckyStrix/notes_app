@@ -130,8 +130,7 @@ def parse_settings(text: str) -> tuple[Settings, list[str]]:
 DEFAULT_SETTINGS_NOTE = """\
 # Brief Settings
 
-One `key: value` line per setting. Saved changes apply on the next run. Lists are comma-separated.
-A bad value is ignored (the default is used) and the problem is shown in Brief Status.
+One `key: value` line per setting. Saved changes apply on the next run. Lists are comma-separated. A bad value is ignored (the default is used) and the problem is shown in Brief Status.
 
 run_time: 06:00
 timezone: America/New_York
@@ -152,13 +151,9 @@ calendars: primary
 
 (Everything below this heading is ignored by the parser.)
 
-- drafters: 2-3 model ids from your 9router dashboard (e.g. kr/claude-sonnet-4.5). Each writes its own draft.
-  Pick different models: the point is that they disagree sometimes.
-- editor: the model that reads all drafts against the facts and writes the final. Use your best one.
-  While drafters or editor is empty you get the brief without the AI sections.
+- drafters: 2-3 model ids from your 9router dashboard (e.g. kr/claude-sonnet-4.5). Each writes its own draft. Pick different models: the point is that they disagree sometimes.
+- editor: the model that reads all drafts against the facts and writes the final. Use your best one. While drafters or editor is empty you get the brief without the AI sections.
 - weekly_day: the day the brief also gives a short outlook for the week.
-- note_projects: the ONLY notes-app projects the brief may read, by name. Leave empty to read none.
-  The Brief project itself is always readable. GitHub repos need no list: every repo you own
-  that was pushed to in the last github_active_days days counts.
+- note_projects: the ONLY notes-app projects the brief may read, by name. Leave empty to read none. The Brief project itself is always readable. GitHub repos need no list: every repo you own that was pushed to in the last github_active_days days counts.
 - calendars: Google Calendar ids to include (primary is your main one).
 """

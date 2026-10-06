@@ -14,30 +14,25 @@ from .config import (CONTROL_NOTES, DEFAULT_SETTINGS_NOTE, NOTE_CONTROL, NOTE_IN
 DEFAULT_INSTRUCTIONS_NOTE = """\
 # Brief Instructions
 
-These are read on every run. Edit freely; the sections are matched by their headings.
-Models never see your other notes, only what the job gathers (see the README).
+These are read on every run. Edit freely; the sections are matched by their headings. Models never see your other notes, only what the job gathers (see the README).
 
 ## About me
 
-(Who you are and what a good day looks like. Goes to every model. Example topics: your
-classes or job, what you are working toward, what you want protected time for.)
+(Who you are and what a good day looks like. Goes to every model. Example topics: your classes or job, what you are working toward, what you want protected time for.)
 
 ## Drafter
 
-Write for someone who reads this at 6am on a phone. Lead with what is time-sensitive today.
-Prefer a short, specific list over general advice.
+Write for someone who reads this at 6am on a phone. Lead with what is time-sensitive today. Prefer a short, specific list over general advice.
 
 ## Editor
 
-Keep it short. If drafts disagree about what matters most, choose what the deadlines and
-the calendar support. Remove anything generic.
+Keep it short. If drafts disagree about what matters most, choose what the deadlines and the calendar support. Remove anything generic.
 """
 
 _COMMAND_HELP = """\
 # Brief Control
 
-Type `run` (write today's brief now) or `dry run` (preview it below, save nothing) on a line
-of its own, then save. It is picked up within a minute and this note is rewritten with the result.
+Type `run` (write today's brief now) or `dry run` (preview it below, save nothing) on a line of its own, then save. It is picked up within a minute and this note is rewritten with the result.
 
 ---
 """
