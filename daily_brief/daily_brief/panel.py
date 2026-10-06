@@ -23,7 +23,12 @@ written by others).
 Rules:
 - Use only the facts. Never invent events, tasks, dates, times, deadlines or project details.
 - Any date or time you mention must appear in the facts, copied exactly.
-- Be concrete and brief. No greetings, no filler.
+- The reader has ADHD: skim-friendly, dense, zero fluff. Fragments, not sentences. No greetings, \
+no hedging, no "it's important to". Max ~12 words per item. Lead with the verb or the time.
+- Never say the same thing twice. Each fact appears in exactly one field: a focus item is not \
+repeated as a watch-out, a day summary does not restate the event list, an outlook does not \
+restate the focus.
+- Regular classes are routine: never call them out, flag them, or treat them as unusual.
 - Events marked "irregular": true are one-offs or rescheduled; the others repeat on a regular schedule.
 - Projects are identified by their id number. A private repo has no details, so say nothing about it.
 - Answer with ONE JSON object and nothing else."""
@@ -31,20 +36,21 @@ Rules:
 SCHEMA = """\
 Answer with this JSON object (field order matters: reason first):
 {
-  "reasoning": "<two or three sentences on what matters most today and why>",
-  "day_summary": "<two or three sentences describing today's events: the shape of the day, gaps, back-to-back or overlapping events; empty string if there are none>",
-  "irregular_summary": "<one or two sentences on the irregular events from today to week_end; empty string if there are none>",
-  "focus": ["<3 to 5 concrete priorities for today, most important first>"],
-  "outlook": "<a short outlook for the week; empty string unless is_weekly is true>",
-  "projects": [{"id": <project id>, "summary": "<one sentence on recent progress>"}],
-  "watchouts": ["<conflicts, clustered deadlines, overdue items; empty list if none>"]
+  "reasoning": "<one sentence: what matters most today>",
+  "day_summary": "<ONE line, max 20 words: shape of today, e.g. 'Free until 9:00 class, then packed 13:00-17:00.' Only gaps, back-to-back or overlaps worth knowing; do not list events. Empty string if no events>",
+  "irregular_summary": "<ONE line, max 15 words, on the irregular events from today to week_end; empty string if none>",
+  "focus": ["<3 to 5 priorities for today, most important first, each max 10 words>"],
+  "outlook": "<max 2 short lines for the week, no overlap with focus; empty string unless is_weekly is true>",
+  "projects": [{"id": <project id>, "summary": "<max 10 words on recent progress, a fragment>"}],
+  "watchouts": ["<only new risks not already in focus: conflicts, clustered deadlines, overdue items; max 3, each max 10 words; empty list if none>"]
 }"""
 
 EDITOR_RULES = """\
 You are the editor. Below are the facts and several independent drafts. Write the final \
 answer: keep what the facts support, merge duplicates, drop anything the facts do not \
 support, and prefer concrete over generic. If drafts disagree, the facts decide. In \
-"reasoning", say what you changed and why."""
+"reasoning", say what you changed in one short sentence. Cut repetition across fields, shorten \
+every line, and keep it skimmable: fragments over sentences."""
 
 
 class RouterError(Exception):

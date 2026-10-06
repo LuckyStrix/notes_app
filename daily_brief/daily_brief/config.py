@@ -55,9 +55,11 @@ class Settings:
     note_projects: tuple[str, ...] = ()
     note_project_days: int = 14
     calendars: tuple[str, ...] = ("primary",)
+    # Events whose title or calendar name contains one of these are never "out of the ordinary".
+    class_keywords: tuple[str, ...] = ("class", "lecture", "lab", "recitation", "seminar", "section", "discussion")
 
 
-_LIST_KEYS = {"drafters", "note_projects", "calendars"}
+_LIST_KEYS = {"drafters", "note_projects", "calendars", "class_keywords"}
 _INT_KEYS = {"lookahead_days": (1, 60), "github_active_days": (1, 365), "note_project_days": (1, 90)}
 _KNOWN = _LIST_KEYS | set(_INT_KEYS) | {"editor", "github_owner", "run_time", "timezone", "weekly_day"}
 
@@ -166,6 +168,7 @@ github_active_days: 30
 note_projects:
 note_project_days: 14
 calendars: primary
+class_keywords: class, lecture, lab, recitation, seminar, section, discussion
 
 ## What these mean
 
@@ -176,4 +179,5 @@ calendars: primary
 - weekly_day: the day the brief also gives a short outlook for the week.
 - note_projects: the ONLY notes-app projects the brief may read, by name. Leave empty to read none. The Brief project itself is always readable. GitHub repos need no list: every repo you own that was pushed to in the last github_active_days days counts.
 - calendars: the Google calendars to include, by name or id, comma-separated. primary is your main calendar; for the others use the name as Google shows it (case, spaces and punctuation don't matter). The command python -m daily_brief calendars lists them. Events on several calendars are merged, and tagged with their calendar when there is more than one.
+- class_keywords: an event whose title or calendar name contains any of these words is treated as a regular class and never listed under "Out of the ordinary", even if Google doesn't mark it as repeating. Add your course codes (e.g. `CS 201`) or your classes calendar's name.
 """

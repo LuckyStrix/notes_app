@@ -101,6 +101,12 @@ class IrregularRenderTests(unittest.TestCase):
         self.assertNotIn("Weekly lecture", section)
         self.assertNotIn("Next week", section)
 
+    def test_classes_never_irregular(self):
+        f = facts([ev("2026-10-08", title="CS 201 Lecture", irregular=True),
+                   ev("2026-10-08", title="Dentist", irregular=True),
+                   ev("2026-10-09", title="Exam", cal="Classes", irregular=True)])
+        self.assertEqual([e["title"] for _, e in irregular_events(f)], ["Dentist"])
+
     def test_no_irregular_events_means_no_section(self):
         self.assertNotIn("Out of the ordinary", render_brief(facts([ev("2026-10-07")]), None, []))
 

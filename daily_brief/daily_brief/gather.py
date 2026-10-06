@@ -46,11 +46,18 @@ def note_project_facts(api, settings: Settings, now: datetime) -> tuple[list[dic
     return facts, warnings
 
 
+def _is_class(e: dict, keywords: tuple[str, ...]) -> bool:
+    hay = f"{e.get('title', '')} {e.get('calendar', '')}".lower()
+    return any(k.lower() in hay for k in keywords if k.strip())
+
+
 def build_facts(now: datetime, settings: Settings, events: list[dict], tasks: list[dict],
                 repos: list[dict], projects: list[dict], source_errors: list[str]) -> dict:
     """Everything the brief states, in one dict. Projects get small 1-based ids: models copy
     '3' back far more reliably than a name, and the guard maps ids back to names."""
     today = now.date()
+    events = [{**e, "irregular": False} if e.get("irregular") and _is_class(e, settings.class_keywords) else e
+              for e in events]
     items = []
     for i, p in enumerate([*repos, *projects], start=1):
         items.append({"id": i, "kind": "repo" if "pushed" in p else "notes_project", **p})

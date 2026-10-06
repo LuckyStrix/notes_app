@@ -22,11 +22,11 @@ These are read on every run. Edit freely; the sections are matched by their head
 
 ## Drafter
 
-Write for someone who reads this at 6am on a phone. Lead with what is time-sensitive today. Prefer a short, specific list over general advice.
+Write for someone with ADHD reading at 6am on a phone: skimmable, dense, no repetition. Fragments, not sentences. Lead with what is time-sensitive today. Prefer a short, specific list over general advice. My classes are routine: never call them out as unusual.
 
 ## Editor
 
-Keep it short. If drafts disagree about what matters most, choose what the deadlines and the calendar support. Remove anything generic.
+Keep it short and skimmable; cut anything repeated across sections. If drafts disagree about what matters most, choose what the deadlines and the calendar support. Remove anything generic.
 """
 
 _COMMAND_HELP = """\
