@@ -7,6 +7,7 @@ import TranscriptView from "../components/player/TranscriptView";
 import NoteHistoryPanel from "../components/notes/NoteHistoryPanel";
 import DiagramGallery from "../components/diagrams/DiagramGallery";
 import MarkdownContent from "../components/MarkdownContent";
+import { bodyToAdopt } from "../components/notes/syncBody";
 
 const DOCUMENT_ACCEPT = ".pdf,.doc,.docx,.txt,.md";
 const AUTOSAVE_DELAY_MS = 800;
@@ -85,6 +86,8 @@ export default function NoteViewerPage() {
   latestTitle.current = title;
   const latestBody = useRef(body);
   latestBody.current = body;
+  // The server body this editor last saw (adopted, or written by its own save); see syncBody.ts.
+  const serverBody = useRef("");
 
   // Reset the local draft only when switching to a *different* note, not on
   // every background refetch (e.g. status polling) -- otherwise unsaved
@@ -93,12 +96,30 @@ export default function NoteViewerPage() {
     if (note) {
       setTitle(note.title);
       setBody(note.body ?? "");
+      serverBody.current = note.body ?? "";
       setCurrentTime(0);
       setViewMode("extracted");
       setTextMode(preferredTextMode(note.body));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [note?.id]);
+
+  // Pick up body changes made elsewhere while this note is open, unless there are unsaved
+  // local edits (those win and are saved as usual). The note-id effect above handles the
+  // initial load, so this only reacts once serverBody has been seeded.
+  useEffect(() => {
+    if (!note || note.type !== "text" || note.id !== noteId) return;
+    const newServer = note.body ?? "";
+    const adopt = bodyToAdopt({
+      serverBody: serverBody.current,
+      draft: latestBody.current,
+      newServer,
+      savePending: bodySaveTimer.current !== null,
+    });
+    serverBody.current = newServer;
+    if (adopt !== null) setBody(adopt);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [note?.body]);
 
   // For documents, the body only shows up once background extraction
   // finishes (status flips pending/processing -> ready) -- pick that up

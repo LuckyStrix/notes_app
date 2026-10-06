@@ -135,13 +135,18 @@ export function useNotes(projectId: string | undefined) {
   });
 }
 
+const TEXT_NOTE_POLL_MS = 5000;
+
 export function useNote(noteId: string | undefined) {
   return useQuery({
     queryKey: ["notes", noteId],
     queryFn: () => api.get<Note>(`/notes/${noteId}`),
     enabled: !!noteId,
-    // Same idea: pick up processing -> ready/error without needing a refresh.
-    refetchInterval: (query) => (query.state.data?.status === "processing" ? 3000 : false),
+    // Same idea: pick up processing -> ready/error without needing a refresh. Text notes also
+    // poll slowly so an open note shows changes made elsewhere (another device, or the
+    // daily_brief job rewriting Brief Control); NoteViewerPage decides whether to adopt them.
+    refetchInterval: (query) =>
+      query.state.data?.status === "processing" ? 3000 : query.state.data?.type === "text" ? TEXT_NOTE_POLL_MS : false,
   });
 }
 
