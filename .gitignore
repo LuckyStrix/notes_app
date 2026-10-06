@@ -22,3 +22,7 @@ analysis_ai/.venv/
 # daily_brief: Google token, run logs and the facts it gathers are personal -- code only.
 daily_brief/data/
 daily_brief/.venv/
+# daily_brief: Google OAuth client secret and token must never be committed.
+daily_brief/client_secret*.json
+daily_brief/google_token.json
+daily_brief/token/

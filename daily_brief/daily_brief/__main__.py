@@ -52,8 +52,9 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--dry-run", action="store_true", help="print it, save nothing")
     auth = sub.add_parser("auth-google", help="one-time Google consent; run where a browser is available")
     auth.add_argument("--client-secret", type=Path, required=True, help="OAuth client JSON from Google Cloud Console")
-    auth.add_argument("--token-out", type=Path, default=Path("google_token.json"),
-                      help="where to write the token (default: ./google_token.json)")
+    auth.add_argument("--token-out", type=Path, default=Path("data/google_token.json"),
+                      help="where to write the token (default: data/google_token.json, which is the folder "
+                           "the container mounts when you run this from daily_brief/)")
     sub.add_parser("healthcheck")
     args = ap.parse_args(argv)
     env = Env.from_environ()

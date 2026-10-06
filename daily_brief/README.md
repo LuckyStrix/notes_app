@@ -16,10 +16,11 @@ The notes app does not depend on this folder and works identically without it. T
 2. **9router** is part of the compose file. Open its dashboard on port 20128, connect your providers, and create an API key. To keep an existing install, copy `~/.9router` into the `router-data` volume. Some providers' logins redirect to `localhost`, which only works from the machine running the container — log in from there.
 3. **Google** (one time). In Google Cloud Console create a project, enable the *Google Calendar API* and *Google Tasks API*, create an OAuth client of type *Desktop app*, and set the consent screen's publishing status to **In production** (it is only you; the "unverified app" warning is expected). If you leave it in *Testing*, Google expires the token after 7 days. Then, on any machine with a browser:
    ```
-   pip install -r daily_brief/requirements.txt
-   python -m daily_brief auth-google --client-secret client_secret.json
+   cd daily_brief
+   pip install -r requirements.txt
+   python -m daily_brief auth-google --client-secret C:\path\to\client_secret.json
    ```
-   This opens a browser, then writes `google_token.json` in the current folder (use `--token-out PATH` to put it elsewhere). Copy it to `daily_brief/data/google_token.json` on the machine that runs the container (create the `data` folder if needed). The commands are the same in PowerShell and bash.
+   (Run it from inside `daily_brief/`: that is where the Python package is, so `python -m daily_brief` fails from the repo root.) A browser opens; approve it, and the token is written to `daily_brief/data/google_token.json`, exactly where the container looks. If you ran this on a different machine, copy that file over. Keep the client secret outside the repo or leave it in `daily_brief/`: both it and the token are gitignored. Same commands in PowerShell and bash.
 4. The first time it runs it creates the **Brief** project and four notes in it. Set `drafters` and `editor` in **Brief Settings** and you're done. (Until you do, you get the brief without the AI sections.)
 
 ## The four notes
@@ -64,7 +65,7 @@ Everything the job gathers is sent to whichever providers 9router routes to, and
 python -m daily_brief serve            # the scheduler loop (what the container runs)
 python -m daily_brief run --dry-run    # print a brief, save nothing
 python -m daily_brief run              # make today's brief now
-python -m daily_brief auth-google --client-secret client_secret.json [--token-out PATH]
+python -m daily_brief auth-google --client-secret client_secret.json [--token-out PATH]   # from inside daily_brief/
 python -m daily_brief healthcheck      # exit 0 if the serve loop is alive
 ```
 
