@@ -64,11 +64,11 @@ def parse_task(raw: dict, list_title: str = "") -> dict | None:
 
 # ---- API access ------------------------------------------------------------------------
 def _credentials(token_path: Path):
+    if not token_path.exists():
+        raise GoogleError(f"no Google token at {token_path}; run `python -m daily_brief auth-google`")
     from google.auth.transport.requests import Request
     from google.oauth2.credentials import Credentials
 
-    if not token_path.exists():
-        raise GoogleError(f"no Google token at {token_path}; run `python -m daily_brief auth-google`")
     creds = Credentials.from_authorized_user_file(str(token_path), SCOPES)
     if not creds.valid:
         try:

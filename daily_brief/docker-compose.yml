@@ -22,6 +22,12 @@ services:
       - ${DB_DATA_LOCATION:-./data}:/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    healthcheck:
+      # The serve loop touches /data/heartbeat every poll; unhealthy if it stops.
+      test: ["CMD", "python", "-m", "daily_brief", "healthcheck"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
     depends_on:
       - router
     restart: unless-stopped
