@@ -216,13 +216,14 @@ function classSummary(p) {
   const done = media.filter((n) => n.transcript).length;
   const eligible = p.notes.filter((n) => !["empty", "search-only", "short"].includes(n.card));
   const current = eligible.filter((n) => n.card === "current").length;
-  return { media, done, eligible, current, pending: media.filter((n) => !n.transcript) };
+  const noFile = media.filter((n) => !n.transcript && !n.has_media);
+  return { media, done, eligible, current, noFile, pending: media.filter((n) => !n.transcript && n.has_media) };
 }
 
 function noteActions(n) {
   const acts = [];
   const isMedia = n.type === "audio" || n.type === "video";
-  if (isMedia && !n.transcript) {
+  if (isMedia && !n.transcript && n.has_media) {
     acts.push(h("button", { class: "btn small primary", title: "Whisper on the GPU; runs only because you clicked", onclick: () => {
       if (confirm(`Transcribe "${n.title}"?\n\nModel ${S.status.whisper.model}, language ${S.status.whisper.language}. Estimated ${fmtMin(n.estimate_seconds)}.\nThis uses the GPU and unloads any Ollama model first.`))
         submitJob({ kind: "transcribe", ids: [n.id] }, `transcribe ${n.title}`);
@@ -264,7 +265,8 @@ function classBlock(p) {
   det.append(h("div", { class: "class-head" },
     h("button", { class: "class-toggle", title: collapsed ? "Expand" : "Minimize", onclick: toggleCollapsed, text: collapsed ? "▸" : "▾" }),
     h("h2", { style: "cursor:pointer", onclick: toggleCollapsed, text: p.name }),
-    sum.media.length ? h("span", { class: `chip ${sum.pending.length ? "" : "ok"}`, text: `${sum.done}/${sum.media.length} recordings transcribed` }) : null,
+    sum.media.length ? h("span", { class: `chip ${sum.pending.length || sum.noFile.length ? "" : "ok"}`, text: `${sum.done}/${sum.media.length} recordings transcribed` }) : null,
+    sum.noFile.length ? h("span", { class: "chip warn", title: sum.noFile.map((n) => n.title).join(", "), text: `${sum.noFile.length} missing upload${sum.noFile.length > 1 ? "s" : ""}` }) : null,
     h("span", { class: `chip ${sum.eligible.length && sum.current === sum.eligible.length ? "ok" : ""}`, text: `${sum.current}/${sum.eligible.length} summary cards` }),
     h("span", { class: `chip ${p.rollup === "current" ? "ok" : p.rollup === "stale" ? "warn" : ""}`, text: rollupLabel }),
   ));
@@ -290,7 +292,9 @@ function classBlock(p) {
     rows.push(h("tr", null,
       h("td", null, `${ICON[n.type] || ""} ${n.title}`),
       h("td", null, t === null ? h("span", { class: "muted", text: "—" })
-        : t ? h("span", { class: "chip ok", title: `${t.segments} segments`, text: `${t.model} · ${t.language}` }) : h("span", { class: "chip", text: "Not transcribed" })),
+        : t ? h("span", { class: "chip ok", title: `${t.segments} segments`, text: `${t.model} · ${t.language}` })
+        : !n.has_media ? h("span", { class: "chip warn", title: "The notes app has this note but no uploaded file (the upload probably never finished). Re-upload the recording there.", text: "No file uploaded" })
+        : h("span", { class: "chip", text: "Not transcribed" })),
       h("td", null, chip(CARD, n.card)),
       h("td", null, chip(INDEX, n.index)),
       h("td", null, noteActions(n))));

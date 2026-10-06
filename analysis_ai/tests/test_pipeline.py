@@ -11,7 +11,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from analysis_ai import chunking, extract, index, notes_api, store, sync  # noqa: E402
+from analysis_ai import chunking, extract, index, notes_api, store, sync, transcribe  # noqa: E402
 
 
 def _note(body, type_="text", nid="n1"):
@@ -139,6 +139,17 @@ class AtomicWrite(unittest.TestCase):
             store.write_json(path, {"a": 1})
             self.assertEqual(store.read_json(path), {"a": 1})
             self.assertEqual([p.name for p in Path(tmp).iterdir()], ["x.json"])
+
+
+class TranscribeMissingUpload(unittest.TestCase):
+    def test_recording_with_no_uploaded_file_fails_the_job_instead_of_reporting_done(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = {"uploads_dir": tmp, "transcribe_mode": "local", "whisper_model": "m", "whisper_language": "en"}
+            note = dict(_note("", type_="video"), title="2026-10-01 lecture")
+            with mock.patch.object(store, "TRANSCRIPTS", Path(tmp) / "transcripts"), \
+                 mock.patch.object(store, "ensure_dirs"), mock.patch.object(transcribe.ollama, "unload_all"):
+                with self.assertRaisesRegex(RuntimeError, "no uploaded file"):
+                    transcribe.transcribe_pending(cfg, [note])
 
 
 if __name__ == "__main__":

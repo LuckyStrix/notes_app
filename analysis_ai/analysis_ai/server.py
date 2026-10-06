@@ -217,6 +217,9 @@ async def api_submit_job(request: Request):
     if kind == "transcribe":
         if ids is not None and any(notes[i]["type"] not in ("audio", "video") for i in ids):
             raise HTTPException(400, "only audio/video notes can be transcribed")
+        if ids is not None and (no_file := [i for i in ids if not notes[i].get("media")]):
+            raise HTTPException(400, f'"{notes[no_file[0]]["title"]}" has no uploaded recording in the notes app '
+                                     "(the upload probably never finished). Re-upload it there, then sync.")
     params = {"ids": ids, "project_id": project["id"] if project else None,
               "force": bool(body.get("force")), "stale_only": bool(body.get("stale_only"))}
     job = manager.submit(kind, _job_title(kind, notes, ids, project), params)

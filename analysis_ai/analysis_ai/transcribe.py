@@ -135,6 +135,14 @@ def transcribe_pending(cfg: dict, notes: list[dict], *, only: str | None = None,
             ctx.log(f"    FAILED (exit {rc}) -- see the lines above")
     ctx.progress(len(todo), len(todo), "")
     ctx.log(f"summary: {counts}")
+    problems = []
+    if counts["missing-file"]:
+        problems.append(f"{counts['missing-file']} recording(s) have no uploaded file in the notes app "
+                        "(the upload probably never finished) -- re-upload them there first")
+    if counts["failed"]:
+        problems.append(f"{counts['failed']} transcription(s) failed -- see the log")
+    if problems:  # a job that skipped or failed work must not show as "done"
+        raise RuntimeError("; ".join(problems))
     return counts
 
 

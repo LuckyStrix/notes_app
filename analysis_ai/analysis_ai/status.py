@@ -19,6 +19,9 @@ def overview(cfg: dict) -> dict:
                 "created_at": n["created_at"], "updated_at": n["updated_at"], "chars": len(text or ""),
                 "duration": (n.get("media") or {}).get("duration_seconds"),
                 "estimate_seconds": transcribe.estimate_seconds(n) if is_media else None,
+                # False when the notes app has the note but no uploaded file (e.g. an upload
+                # that never finished): there is nothing to transcribe until it is re-uploaded.
+                "has_media": bool(n.get("media")) if is_media else None,
                 "transcript": (None if not is_media else {
                     "model": transcript.get("model"), "language": transcript.get("language"),
                     "segments": len(transcript.get("segments", [])),
