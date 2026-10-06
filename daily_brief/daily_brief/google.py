@@ -7,6 +7,7 @@ token file is copied into the data dir afterwards. The consent screen must be se
 """
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -105,9 +106,36 @@ def fetch(token_path: Path, tz: ZoneInfo, calendars: tuple[str, ...], start: dat
     return events, tasks
 
 
+def check_client_secret(path: Path) -> None:
+    """Fail with a plain explanation if this is not the OAuth client JSON from Cloud Console.
+    The usual mistake is passing a file that holds only the client id or secret text: Google
+    ids start with a 12-digit number, which is why json.load used to die with 'Extra data:
+    line 1 column 13'."""
+    try:
+        text = path.read_text(encoding="utf-8-sig")
+    except OSError as exc:
+        raise GoogleError(f"cannot read {path}: {exc}") from exc
+    try:
+        data = json.loads(text)
+    except ValueError:
+        raise GoogleError(
+            f"{path} is not JSON. It must be the file downloaded from Google Cloud Console "
+            "(APIs & Services > Credentials > your OAuth client > Download JSON), not the client "
+            "id or secret pasted into a file. It should start with {\"installed\": ..."
+        ) from None
+    if not isinstance(data, dict) or "installed" not in data:
+        kind = next(iter(data), "?") if isinstance(data, dict) else type(data).__name__
+        raise GoogleError(
+            f"{path} has the wrong shape (top-level key '{kind}'). The OAuth client must be of type "
+            "'Desktop app', whose JSON starts with {\"installed\": ...}. Create a new client of that type."
+        )
+
+
 def authorize(client_secret_path: Path, token_path: Path) -> None:
     """One-time browser consent. Run on a machine with a browser, then copy the token."""
     from google_auth_oauthlib.flow import InstalledAppFlow
+
+    check_client_secret(client_secret_path)
 
     flow = InstalledAppFlow.from_client_secrets_file(str(client_secret_path), SCOPES)
     creds = flow.run_local_server(port=0, access_type="offline", prompt="consent")

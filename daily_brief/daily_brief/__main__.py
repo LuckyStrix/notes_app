@@ -65,8 +65,12 @@ def main(argv: list[str] | None = None) -> int:
     elif args.cmd == "run":
         return cmd_run(env, args.dry_run)
     elif args.cmd == "auth-google":
-        from .google import authorize
-        authorize(args.client_secret, args.token_out)
+        from .google import GoogleError, authorize
+        try:
+            authorize(args.client_secret, args.token_out)
+        except GoogleError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
         print(f"Token saved to {args.token_out}. Copy it to daily_brief/data/google_token.json on the host that runs the container.")
     elif args.cmd == "healthcheck":
         return cmd_healthcheck(env)
