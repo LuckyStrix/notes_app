@@ -46,6 +46,7 @@ allowlisted notes projects ┘     │
 - **Calendars.** `calendars:` in Brief Settings takes names or ids, e.g. `calendars: primary, Carter's Events` (`python -m daily_brief calendars`, run from `daily_brief/`, lists what you have). Matching ignores case and punctuation. Events from several calendars are merged, an event that appears on two is kept once, and events are tagged with their calendar when there are several.
 - **Day summary and irregular events.** The models write a short summary of today's events (shape of the day, gaps, back-to-back or overlapping events). The **Out of the ordinary this week** section lists, from today through Sunday, the events that are one-offs or were moved off their usual slot; Google marks which events belong to a recurring series, so code decides what is irregular and the models only add a sentence about them. A summary of no events is dropped, and times and dates in either summary go through the same guard as everything else.
 - **Facts are rendered by code.** Events, tasks and the week view never pass through a model, so one can't drop or invent an event. Models write only the prose around them.
+- **One 9router combo.** If you use a single combo that picks models itself (e.g. `Code-Strong`), set `drafters: Code-Strong x3` and `editor: Code-Strong`: the combo is asked three times for independent drafts, then once to edit. In a container: `docker compose -f daily_brief/docker-compose.yml exec brief python -m daily_brief check` shows whether each link works.
 - **Panel.** Each drafter returns JSON (reasoning first, then the content). The editor sees the facts and every draft, labelled A, B, C (no model names), and writes the final. A model that errors or returns junk is retried once, then recorded in Status; the others carry on. If the editor fails, the first draft is shown and the footer says it's unedited. If every model fails you still get the full factual brief.
 - **Guards.** Any date or time a model writes must appear in your data, or that line is dropped (and counted in the footer). A private repo never gets a model-written summary. Project ids must exist.
 - **Incomplete briefs are loud.** If Google or GitHub is down (or the Google token expired) the brief is still written, with a `⚠` line at the top, and retried every 30 minutes (up to 4 times) by updating the same note.
@@ -68,6 +69,7 @@ python -m daily_brief serve            # the scheduler loop (what the container 
 python -m daily_brief run --dry-run    # print a brief, save nothing
 python -m daily_brief run              # make today's brief now
 python -m daily_brief auth-google --client-secret client_secret.json [--token-out PATH]   # from inside daily_brief/
+python -m daily_brief check            # test notes app, router, models and Google token; says what is broken
 python -m daily_brief calendars        # list your Google calendars (run from inside daily_brief/)
 python -m daily_brief healthcheck      # exit 0 if the serve loop is alive
 ```

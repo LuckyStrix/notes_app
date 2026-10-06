@@ -35,6 +35,55 @@ def cmd_run(env: Env, dry_run: bool) -> int:
     return 0
 
 
+def cmd_check(env: Env) -> int:
+    """Tests each link in the chain and says which one is broken. Sends one tiny request per
+    distinct configured model, so it also shows up in the router's request counts."""
+    from .panel import RouterError
+
+    failed = False
+    api, router = _build(env)
+    settings = None
+    try:
+        api.projects()
+        print(f"notes app   ok      {env.notes_api_url}")
+        api.ensure_brief_project()
+        notes = ensure_control_notes(api)
+        settings, warnings = parse_settings(api.note(notes[NOTE_SETTINGS]["id"])["body"] or "")
+        for w in warnings:
+            print(f"settings    WARN    {w}")
+    except Exception as exc:  # NotesApiError and anything unexpected: say what, keep checking
+        failed = True
+        print(f"notes app   FAILED  {exc}")
+
+    print(f"api key     {'set' if env.router_api_key else 'MISSING (DB_ROUTER_API_KEY is empty)'}")
+    available: list[str] = []
+    try:
+        available = router.models()
+        print(f"router      ok      {env.router_url} ({len(available)} models/combos)")
+    except RouterError as exc:
+        failed = True
+        print(f"router      FAILED  {exc}")
+
+    if settings is None or not (settings.drafters and settings.editor):
+        failed = True
+        print("models      NONE    set drafters and editor in Brief Settings (the brief is written without AI sections until then)")
+    else:
+        for model in dict.fromkeys([*settings.drafters, settings.editor]):
+            if available and model not in available:
+                print(f"model       WARN    '{model}' is not in the router's list; is the name exact?")
+            try:
+                reply = router.chat(model, [{"role": "user", "content": "Reply with the single word OK."}], 0.0)
+                print(f"model       ok      {model}: {reply.strip()[:40]!r}")
+            except RouterError as exc:
+                failed = True
+                print(f"model       FAILED  {exc}")
+
+    token = env.data_dir / "google_token.json"
+    print(f"google      {'token found' if token.exists() else 'NO TOKEN'}  {token}")
+    failed = failed or not token.exists()
+    return 1 if failed else 0
+
+
 def cmd_healthcheck(env: Env) -> int:
     """For the container HEALTHCHECK: the serve loop touches a heartbeat file every poll."""
     try:
@@ -56,6 +105,7 @@ def main(argv: list[str] | None = None) -> int:
                       help="where to write the token (default: data/google_token.json, which is the folder "
                            "the container mounts when you run this from daily_brief/)")
     sub.add_parser("calendars", help="list the Google calendars you can name in Brief Settings")
+    sub.add_parser("check", help="test the notes app, router, models and Google token, and say what is broken")
     sub.add_parser("healthcheck")
     args = ap.parse_args(argv)
     env = Env.from_environ()
@@ -73,6 +123,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: {exc}", file=sys.stderr)
             return 1
         print(f"Token saved to {args.token_out}. Copy it to daily_brief/data/google_token.json on the host that runs the container.")
+    elif args.cmd == "check":
+        return cmd_check(env)
     elif args.cmd == "calendars":
         from .google import GoogleError, list_calendars
         try:

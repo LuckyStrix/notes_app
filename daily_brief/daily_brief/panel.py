@@ -76,6 +76,23 @@ class Router:
         self.session = session or requests.Session()
         self.timeout, self._sleep = timeout, sleep
 
+    def models(self) -> list[str]:
+        """Model/combo ids the router offers (GET /models). Raises RouterError with a plain
+        reason, e.g. when the API key is rejected."""
+        headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+        try:
+            resp = self.session.get(f"{self.base_url}/models", headers=headers, timeout=20)
+        except requests.RequestException as exc:
+            raise RouterError(f"cannot reach {self.base_url}: {exc}") from exc
+        if resp.status_code in (401, 403):
+            raise RouterError(f"HTTP {resp.status_code}: the router rejected the API key (DB_ROUTER_API_KEY)")
+        if resp.status_code >= 400:
+            raise RouterError(f"HTTP {resp.status_code} {resp.text[:150]}")
+        try:
+            return [m.get("id", "") for m in resp.json().get("data", [])]
+        except (ValueError, AttributeError) as exc:
+            raise RouterError(f"unexpected /models response ({exc})") from exc
+
     def chat(self, model: str, messages: list[dict], temperature: float) -> str:
         headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
         body = {"model": model, "messages": messages, "temperature": temperature, "stream": False}

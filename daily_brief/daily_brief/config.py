@@ -65,6 +65,26 @@ _KNOWN = _LIST_KEYS | set(_INT_KEYS) | {"editor", "github_owner", "run_time", "t
 _LINE = re.compile(r"^\s*(?:[-*+]\s+)?[`*_]*([A-Za-z][A-Za-z0-9_]*)[`*_]*\s*:\s*(.*?)\s*$")
 
 
+MAX_REPEAT = 5
+# "Code-Strong x3" or "Code-Strong*3": the same model asked several times. With a 9router combo
+# (which picks among models per request) that gives several independent drafts from one name.
+_REPEAT = re.compile(r"^(.+?)(?:\s+x|\s*\*)\s*(\d+)$", re.I)
+
+
+def _expand_repeats(items: tuple[str, ...], warnings: list[str]) -> tuple[str, ...]:
+    out: list[str] = []
+    for item in items:
+        m = _REPEAT.match(item)
+        if not m:
+            out.append(item)
+            continue
+        n = int(m.group(2))
+        if n > MAX_REPEAT:
+            warnings.append(f"drafters: '{item}' asks for {n} copies; using {MAX_REPEAT}")
+        out += [m.group(1).strip()] * max(1, min(n, MAX_REPEAT))
+    return tuple(out)
+
+
 def _clean(value: str) -> str:
     return value.strip().strip("`*_").strip()
 
@@ -94,7 +114,7 @@ def parse_settings(text: str) -> tuple[Settings, list[str]]:
             items = tuple(i for i in (_clean(p) for p in re.split(r"[,;]", value)) if i)
             if key == "calendars" and not items:
                 continue
-            values[key] = items
+            values[key] = _expand_repeats(items, warnings) if key == "drafters" else items
         elif key in _INT_KEYS:
             lo, hi = _INT_KEYS[key]
             try:
@@ -151,7 +171,7 @@ calendars: primary
 
 (Everything below this heading is ignored by the parser.)
 
-- drafters: 2-3 model ids from your 9router dashboard (e.g. kr/claude-sonnet-4.5). Each writes its own draft. Pick different models: the point is that they disagree sometimes.
+- drafters: 2-3 model ids from your 9router dashboard (e.g. kr/claude-sonnet-4.5), each writing its own draft. Pick different models: the point is that they disagree sometimes. If you use a single 9router combo that picks models itself, repeat it: `Code-Strong x3` asks it three times.
 - editor: the model that reads all drafts against the facts and writes the final. Use your best one. While drafters or editor is empty you get the brief without the AI sections.
 - weekly_day: the day the brief also gives a short outlook for the week.
 - note_projects: the ONLY notes-app projects the brief may read, by name. Leave empty to read none. The Brief project itself is always readable. GitHub repos need no list: every repo you own that was pushed to in the last github_active_days days counts.

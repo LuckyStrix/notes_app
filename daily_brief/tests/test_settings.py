@@ -35,6 +35,17 @@ class ParseSettingsTests(unittest.TestCase):
         s, _ = parse_settings("lookahead_days: 3\nlookahead_days: 5")
         self.assertEqual(s.lookahead_days, 5)
 
+    def test_repeat_shorthand_for_a_single_combo(self):
+        s, w = parse_settings("drafters: Code-Strong x3\neditor: Code-Strong")
+        self.assertEqual(s.drafters, ("Code-Strong",) * 3)
+        self.assertEqual(w, [])
+        self.assertEqual(parse_settings("drafters: a*2, b X2, c")[0].drafters, ("a", "a", "b", "b", "c"))
+
+    def test_repeat_is_capped_and_names_with_x_digit_are_left_alone(self):
+        s, w = parse_settings("drafters: Code-Strong x50, model-x2")
+        self.assertEqual(s.drafters, ("Code-Strong",) * 5 + ("model-x2",))
+        self.assertEqual(len(w), 1)
+
     def test_empty_calendars_keeps_default(self):
         s, _ = parse_settings("calendars:")
         self.assertEqual(s.calendars, ("primary",))
