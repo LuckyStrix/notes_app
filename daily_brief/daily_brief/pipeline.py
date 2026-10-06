@@ -38,8 +38,9 @@ def run_brief(env: Env, settings: Settings, warnings: list[str], api: NotesApi, 
 
     events, tasks = [], []
     try:
-        events, tasks = google.fetch(env.data_dir / "google_token.json", tz, settings.calendars,
-                                     today, today + timedelta(days=settings.lookahead_days))
+        events, tasks, g_warnings = google.fetch(env.data_dir / "google_token.json", tz, settings.calendars,
+                                                 today, today + timedelta(days=settings.lookahead_days))
+        errors += g_warnings
     except google.GoogleError as exc:
         errors.append(f"Google Calendar and Tasks unavailable: {exc}")
 

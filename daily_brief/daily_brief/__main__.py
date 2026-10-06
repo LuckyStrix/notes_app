@@ -55,6 +55,7 @@ def main(argv: list[str] | None = None) -> int:
     auth.add_argument("--token-out", type=Path, default=Path("data/google_token.json"),
                       help="where to write the token (default: data/google_token.json, which is the folder "
                            "the container mounts when you run this from daily_brief/)")
+    sub.add_parser("calendars", help="list the Google calendars you can name in Brief Settings")
     sub.add_parser("healthcheck")
     args = ap.parse_args(argv)
     env = Env.from_environ()
@@ -72,6 +73,14 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: {exc}", file=sys.stderr)
             return 1
         print(f"Token saved to {args.token_out}. Copy it to daily_brief/data/google_token.json on the host that runs the container.")
+    elif args.cmd == "calendars":
+        from .google import GoogleError, list_calendars
+        try:
+            for label, cal_id in list_calendars(env.data_dir / "google_token.json"):
+                print(f"{label}    (id: {cal_id})")
+        except GoogleError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
     elif args.cmd == "healthcheck":
         return cmd_healthcheck(env)
     return 0

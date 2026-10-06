@@ -10,6 +10,7 @@ import re
 from datetime import datetime, timedelta
 
 from .config import BRIEF_PROJECT, Settings
+from .render import week_end
 
 _SNIPPET = 300
 _MAX_NOTES = 8
@@ -57,8 +58,11 @@ def build_facts(now: datetime, settings: Settings, events: list[dict], tasks: li
         "today": today.isoformat(),
         "weekday": today.strftime("%A"),
         "is_weekly": today.strftime("%A").lower() == settings.weekly_day,
+        "week_end": week_end(today).isoformat(),
         "timezone": settings.timezone,
         "lookahead_days": settings.lookahead_days,
+        # Tag events with their calendar only when there is more than one to tell apart.
+        "multi_calendar": len({e.get("calendar") for e in events}) > 1,
         "events": sorted(events, key=lambda e: (e["date"], e["start_time"] or "")),
         "tasks": sorted(tasks, key=lambda t: (t["due"] or "9999", t["title"].lower())),
         "projects": items,

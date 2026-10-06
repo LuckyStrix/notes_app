@@ -28,7 +28,7 @@ The notes app does not depend on this folder and works identically without it. T
 | note | who writes it | what it is |
 |---|---|---|
 | **Brief Instructions** | you | "About me", plus a section each for the Drafter and the Editor. Read on every run. |
-| **Brief Settings** | you | `key: value` lines: run time, timezone, panel models, allowlisted notes-app projects, GitHub owner, lookahead. Bad values are ignored and reported in Status. |
+| **Brief Settings** | you | `key: value` lines: run time, timezone, panel models, calendars, allowlisted notes-app projects, GitHub owner, lookahead. Bad values are ignored and reported in Status. |
 | **Brief Control** | you | Type `run` or `dry run` on a line of its own, anywhere in the note, and save. It is picked up within a minute and the note is rewritten with the result (a dry run puts the whole brief there and saves nothing). |
 | **Brief Status** | the job | Last run, which models succeeded or failed, lines removed by checks, data problems, settings problems. |
 
@@ -43,6 +43,8 @@ allowlisted notes projects ┘     │
                                  └─▶ drafters (N models, in parallel) ─▶ editor ─▶ guards ─▶ Focus / Outlook / project summaries / Watch-outs
 ```
 
+- **Calendars.** `calendars:` in Brief Settings takes names or ids, e.g. `calendars: primary, Carter's Events` (`python -m daily_brief calendars`, run from `daily_brief/`, lists what you have). Matching ignores case and punctuation. Events from several calendars are merged, an event that appears on two is kept once, and events are tagged with their calendar when there are several.
+- **Day summary and irregular events.** The models write a short summary of today's events (shape of the day, gaps, back-to-back or overlapping events). The **Out of the ordinary this week** section lists, from today through Sunday, the events that are one-offs or were moved off their usual slot; Google marks which events belong to a recurring series, so code decides what is irregular and the models only add a sentence about them. A summary of no events is dropped, and times and dates in either summary go through the same guard as everything else.
 - **Facts are rendered by code.** Events, tasks and the week view never pass through a model, so one can't drop or invent an event. Models write only the prose around them.
 - **Panel.** Each drafter returns JSON (reasoning first, then the content). The editor sees the facts and every draft, labelled A, B, C (no model names), and writes the final. A model that errors or returns junk is retried once, then recorded in Status; the others carry on. If the editor fails, the first draft is shown and the footer says it's unedited. If every model fails you still get the full factual brief.
 - **Guards.** Any date or time a model writes must appear in your data, or that line is dropped (and counted in the footer). A private repo never gets a model-written summary. Project ids must exist.
@@ -66,6 +68,7 @@ python -m daily_brief serve            # the scheduler loop (what the container 
 python -m daily_brief run --dry-run    # print a brief, save nothing
 python -m daily_brief run              # make today's brief now
 python -m daily_brief auth-google --client-secret client_secret.json [--token-out PATH]   # from inside daily_brief/
+python -m daily_brief calendars        # list your Google calendars (run from inside daily_brief/)
 python -m daily_brief healthcheck      # exit 0 if the serve loop is alive
 ```
 

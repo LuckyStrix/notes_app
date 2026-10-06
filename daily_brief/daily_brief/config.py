@@ -155,5 +155,5 @@ calendars: primary
 - editor: the model that reads all drafts against the facts and writes the final. Use your best one. While drafters or editor is empty you get the brief without the AI sections.
 - weekly_day: the day the brief also gives a short outlook for the week.
 - note_projects: the ONLY notes-app projects the brief may read, by name. Leave empty to read none. The Brief project itself is always readable. GitHub repos need no list: every repo you own that was pushed to in the last github_active_days days counts.
-- calendars: Google Calendar ids to include (primary is your main one).
+- calendars: the Google calendars to include, by name or id, comma-separated. primary is your main calendar; for the others use the name as Google shows it (case, spaces and punctuation don't matter). The command python -m daily_brief calendars lists them. Events on several calendars are merged, and tagged with their calendar when there is more than one.
 """

@@ -11,6 +11,8 @@ import json
 import re
 from datetime import date
 
+from .render import events_on, irregular_events
+
 MAX_LEN = 400
 MAX_FOCUS = 5
 MAX_WATCHOUTS = 4
@@ -84,7 +86,13 @@ def validate_draft(obj: dict) -> dict:
         raise BadOutput("'outlook' must be a string")
     if "focus" not in obj:
         raise BadOutput("missing 'focus'")
-    return {"reasoning": str(obj.get("reasoning", ""))[:MAX_LEN], "focus": str_list("focus"),
+    summaries = {}
+    for key in ("day_summary", "irregular_summary"):
+        v = obj.get(key) or ""
+        if not isinstance(v, str):
+            raise BadOutput(f"'{key}' must be a string")
+        summaries[key] = v
+    return {"reasoning": str(obj.get("reasoning", ""))[:MAX_LEN], **summaries, "focus": str_list("focus"),
             "outlook": outlook, "projects": clean_projects, "watchouts": str_list("watchouts")}
 
 
@@ -155,6 +163,11 @@ def guard_ai(draft: dict, facts: dict) -> tuple[dict, list[str]]:
     focus = [t for t in (ok(x, "focus") for x in draft["focus"]) if t][:MAX_FOCUS]
     watch = [t for t in (ok(x, "watch-out") for x in draft["watchouts"]) if t][:MAX_WATCHOUTS]
     outlook = (ok(draft["outlook"], "outlook") or "") if facts["is_weekly"] else ""
+    # A summary of nothing is invented by definition: keep one only if there are events to summarise.
+    today = date.fromisoformat(facts["today"])
+    day_summary = (ok(draft.get("day_summary", ""), "day summary") or "") if events_on(facts["events"], today) else ""
+    irregular_summary = ((ok(draft.get("irregular_summary", ""), "irregular summary") or "")
+                         if irregular_events(facts) else "")
 
     by_id = {p["id"]: p for p in facts["projects"]}
     summaries: dict[int, str] = {}
@@ -166,4 +179,5 @@ def guard_ai(draft: dict, facts: dict) -> tuple[dict, list[str]]:
             continue  # nothing was shared about a private repo, so nothing can be said
         elif (s := ok(p["summary"], f"project {proj['name']}")):
             summaries[p["id"]] = s
-    return {"focus": focus, "outlook": outlook, "projects": summaries, "watchouts": watch}, removed
+    return {"focus": focus, "outlook": outlook, "day_summary": day_summary,
+            "irregular_summary": irregular_summary, "projects": summaries, "watchouts": watch}, removed

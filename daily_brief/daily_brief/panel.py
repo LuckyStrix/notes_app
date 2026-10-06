@@ -24,6 +24,7 @@ Rules:
 - Use only the facts. Never invent events, tasks, dates, times, deadlines or project details.
 - Any date or time you mention must appear in the facts, copied exactly.
 - Be concrete and brief. No greetings, no filler.
+- Events marked "irregular": true are one-offs or rescheduled; the others repeat on a regular schedule.
 - Projects are identified by their id number. A private repo has no details, so say nothing about it.
 - Answer with ONE JSON object and nothing else."""
 
@@ -31,6 +32,8 @@ SCHEMA = """\
 Answer with this JSON object (field order matters: reason first):
 {
   "reasoning": "<two or three sentences on what matters most today and why>",
+  "day_summary": "<two or three sentences describing today's events: the shape of the day, gaps, back-to-back or overlapping events; empty string if there are none>",
+  "irregular_summary": "<one or two sentences on the irregular events from today to week_end; empty string if there are none>",
   "focus": ["<3 to 5 concrete priorities for today, most important first>"],
   "outlook": "<a short outlook for the week; empty string unless is_weekly is true>",
   "projects": [{"id": <project id>, "summary": "<one sentence on recent progress>"}],

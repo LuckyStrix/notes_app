@@ -8,6 +8,7 @@ token file is copied into the data dir afterwards. The consent screen must be se
 from __future__ import annotations
 
 import json
+import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -35,6 +36,7 @@ def parse_event(raw: dict, tz: ZoneInfo, calendar: str = "") -> dict | None:
         "title": (raw.get("summary") or "(no title)").strip(),
         "location": (raw.get("location") or "").strip(),
         "calendar": calendar,
+        "irregular": _irregular(raw, start),
     }
     if "date" in start:  # all-day; the API's end date is exclusive
         d = date.fromisoformat(start["date"])
@@ -51,6 +53,26 @@ def parse_event(raw: dict, tz: ZoneInfo, calendar: str = "") -> dict | None:
     return ev
 
 
+def _instant(d: dict):
+    """A comparable value for a Calendar start/originalStartTime: an aware datetime or a date."""
+    if "dateTime" in d:
+        return datetime.fromisoformat(d["dateTime"])
+    return date.fromisoformat(d["date"]) if "date" in d else None
+
+
+def _irregular(raw: dict, start: dict) -> bool:
+    """One-offs and moved instances are irregular; an untouched instance of a recurring series
+    is not. singleEvents=True expands a series into instances that carry `recurringEventId`,
+    and a rescheduled instance's `originalStartTime` differs from its `start`."""
+    if not raw.get("recurringEventId"):
+        return True
+    orig = raw.get("originalStartTime")
+    try:
+        return bool(orig) and _instant(orig) != _instant(start)
+    except ValueError:
+        return False
+
+
 def parse_task(raw: dict, list_title: str = "") -> dict | None:
     if raw.get("status") == "completed" or not (raw.get("title") or "").strip():
         return None
@@ -61,6 +83,42 @@ def parse_task(raw: dict, list_title: str = "") -> dict | None:
         "list": list_title,
         "notes": (raw.get("notes") or "").strip()[:200],
     }
+
+
+# ---- calendar selection ----------------------------------------------------------------
+def _cal_name(c: dict) -> str:
+    # The primary calendar's own name is the account's email address; do not send that anywhere.
+    return "Primary" if c.get("primary") else (c.get("summaryOverride") or c.get("summary") or c["id"])
+
+
+def _norm(s: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", s.lower())
+
+
+def resolve_calendars(available: list[dict], wanted: tuple[str, ...]) -> tuple[list[tuple[str, str]], list[str]]:
+    """Maps the names/ids in Brief Settings to [(calendar id, label)]. Matching ignores case,
+    spaces and punctuation ("carters events" finds "Carter's Events"); a unique partial match
+    also works. `primary` is your main calendar. Pure."""
+    resolved: list[tuple[str, str]] = []
+    warnings: list[str] = []
+    for w in wanted:
+        match = None
+        if w.lower() == "primary":
+            match = next((c for c in available if c.get("primary")), None)
+        match = match or next((c for c in available if c["id"] == w), None)
+        if not match:
+            nw = _norm(w)
+            cands = ([c for c in available if _norm(_cal_name(c)) == nw]
+                     or [c for c in available if nw and nw in _norm(_cal_name(c))])
+            if len(cands) > 1:
+                warnings.append(f"calendars: '{w}' matches several calendars ({', '.join(_cal_name(c) for c in cands)}); use the exact name")
+                continue
+            match = cands[0] if cands else None
+        if not match:
+            warnings.append(f"calendars: no calendar named '{w}' (`python -m daily_brief calendars` lists them)")
+        elif all(match["id"] != r[0] for r in resolved):
+            resolved.append((match["id"], _cal_name(match)))
+    return resolved, warnings
 
 
 # ---- API access ------------------------------------------------------------------------
@@ -81,21 +139,28 @@ def _credentials(token_path: Path):
 
 
 def fetch(token_path: Path, tz: ZoneInfo, calendars: tuple[str, ...], start: date, end: date):
-    """Returns (events, tasks) for [start, end]. Raises GoogleError."""
+    """Returns (events, tasks, warnings) for [start, end]. Raises GoogleError. The same event
+    on two calendars (an invite you both received and your own copy) is kept once."""
     from googleapiclient.discovery import build
     from googleapiclient.errors import HttpError
 
     creds = _credentials(token_path)
     t0 = datetime.combine(start, datetime.min.time(), tz).isoformat()
     t1 = datetime.combine(end + timedelta(days=1), datetime.min.time(), tz).isoformat()
-    events, tasks = [], []
+    events, tasks, seen = [], [], set()
     try:
         cal = build("calendar", "v3", credentials=creds, cache_discovery=False)
-        for cal_id in calendars:
+        available = cal.calendarList().list(maxResults=250).execute().get("items", [])
+        chosen, warnings = resolve_calendars(available, calendars)
+        for cal_id, label in chosen:
             resp = cal.events().list(calendarId=cal_id, timeMin=t0, timeMax=t1, singleEvents=True,
                                      orderBy="startTime", maxResults=250).execute()
-            name = resp.get("summary", cal_id)
-            events += [e for e in (parse_event(r, tz, name) for r in resp.get("items", [])) if e]
+            for raw in resp.get("items", []):
+                e = parse_event(raw, tz, label)
+                key = e and (e["title"].lower(), e["date"], e["start_time"], e["end_time"], e["until"])
+                if e and key not in seen:
+                    seen.add(key)
+                    events.append(e)
         svc = build("tasks", "v1", credentials=creds, cache_discovery=False)
         for tl in svc.tasklists().list(maxResults=50).execute().get("items", []):
             resp = svc.tasks().list(tasklist=tl["id"], showCompleted=False, showHidden=False,
@@ -103,7 +168,20 @@ def fetch(token_path: Path, tz: ZoneInfo, calendars: tuple[str, ...], start: dat
             tasks += [t for t in (parse_task(r, tl.get("title", "")) for r in resp.get("items", [])) if t]
     except HttpError as exc:
         raise GoogleError(f"Google API error: {exc}") from exc
-    return events, tasks
+    return events, tasks, warnings
+
+
+def list_calendars(token_path: Path) -> list[tuple[str, str]]:
+    """[(label, id)] for every calendar the account can see, for the `calendars` command."""
+    from googleapiclient.discovery import build
+    from googleapiclient.errors import HttpError
+
+    try:
+        cal = build("calendar", "v3", credentials=_credentials(token_path), cache_discovery=False)
+        items = cal.calendarList().list(maxResults=250).execute().get("items", [])
+    except HttpError as exc:
+        raise GoogleError(f"Google API error: {exc}") from exc
+    return [(_cal_name(c), c["id"]) for c in items]
 
 
 def check_client_secret(path: Path) -> None:

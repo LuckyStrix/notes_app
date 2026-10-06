@@ -71,7 +71,7 @@ class TickTests(unittest.TestCase):
         self.api = FakeNotesApi()
         self.session = FakeSession({"d1": [json.dumps(GOOD)] * 5, "d2": [json.dumps(GOOD)] * 5, "ed": [json.dumps(GOOD)] * 5})
         self.sched = Scheduler(self.env, self.api, Router("http://r/v1", "", session=self.session, sleep=lambda _: None), log=lambda *_: None)
-        patches = [mock.patch.object(google, "fetch", return_value=([], [])),
+        patches = [mock.patch.object(google, "fetch", return_value=([], [], [])),
                    mock.patch.object(github, "fetch", return_value=[{"name": "pub", "private": False, "pushed": "2026-10-06", "description": "", "commits": ["Fix bug"]}])]
         for p in patches:
             p.start()
