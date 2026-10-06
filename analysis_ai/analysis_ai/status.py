@@ -17,8 +17,8 @@ def overview(cfg: dict) -> dict:
             rows.append({
                 "id": n["id"], "title": n["title"], "type": n["type"], "folder": "/".join(n["group_path"]),
                 "created_at": n["created_at"], "updated_at": n["updated_at"], "chars": len(text or ""),
-                "duration": (n.get("media") or {}).get("duration_seconds"),
-                "estimate_seconds": transcribe.estimate_seconds(n) if is_media else None,
+                "duration": transcribe.duration_seconds(cfg, n) if is_media else None,
+                "estimate_seconds": transcribe.estimate_seconds(cfg, n) if is_media else None,
                 # False when the notes app has the note but no uploaded file (e.g. an upload
                 # that never finished): there is nothing to transcribe until it is re-uploaded.
                 "has_media": bool(n.get("media")) if is_media else None,

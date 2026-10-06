@@ -55,7 +55,7 @@ function atToLoc(at) { // "12:34" | "1:13:19" | "p.5" -> {start} | {page}
   if (parts.some(Number.isNaN)) return {};
   return { start: parts.reduce((a, b) => a * 60 + b, 0) };
 }
-const fmtMin = (s) => (s < 90 ? "<2 min" : `~${Math.round(s / 60)} min`);
+const fmtMin = (s) => (!s ? "time unknown" : s < 90 ? "<2 min" : `~${Math.round(s / 60)} min`);
 function ago(ts) {
   if (!ts) return "never";
   const s = Math.max(0, Date.now() / 1000 - ts);
@@ -250,6 +250,8 @@ function classBlock(p) {
   const sum = classSummary(p);
   const needsUpdate = p.notes.some((n) => n.card === "none" || n.card === "stale" || n.index === "none" || n.index === "stale") || ["none", "stale"].includes(p.rollup);
   const estimate = sum.pending.reduce((a, n) => a + (n.estimate_seconds || 0), 0);
+  // Some lengths can be unknown; then the total is a lower bound, not a fake exact figure.
+  const estimateLabel = fmtMin(estimate) + (estimate && sum.pending.some((n) => !n.estimate_seconds) ? "+" : "");
   const det = h("div", { class: "card" });
   if (!S.seenClasses.has(p.id)) { // first sight: open the note table for classes with recordings (that's where Transcribe lives)
     S.seenClasses.add(p.id);
@@ -276,9 +278,9 @@ function classBlock(p) {
       title: "Builds cards for new/edited notes, then the class overview and search index. Never transcribes.",
       onclick: () => submitJob({ kind: "update", project_id: p.id }, `update ${p.name}`), text: needsUpdate ? "Update class" : "Class is up to date" }),
     h("button", { class: "btn", disabled: !sum.pending.length || undefined, onclick: () => {
-      if (confirm(`Transcribe ${sum.pending.length} recording(s) in ${p.name}?\n\nModel ${S.status.whisper.model}, language ${S.status.whisper.language}. Estimated ${fmtMin(estimate)} in total.\nUses the GPU; runs one at a time; you can cancel.`))
+      if (confirm(`Transcribe ${sum.pending.length} recording(s) in ${p.name}?\n\nModel ${S.status.whisper.model}, language ${S.status.whisper.language}. Estimated ${estimateLabel} in total.\nUses the GPU; runs one at a time; you can cancel.`))
         submitJob({ kind: "transcribe", ids: sum.pending.map((n) => n.id), project_id: p.id }, `transcribe ${sum.pending.length} recordings in ${p.name}`);
-    }, text: sum.pending.length ? `Transcribe ${sum.pending.length} pending (${fmtMin(estimate)})` : "Nothing to transcribe" }),
+    }, text: sum.pending.length ? `Transcribe ${sum.pending.length} pending (${estimateLabel})` : "Nothing to transcribe" }),
   ));
 
   const rows = [];

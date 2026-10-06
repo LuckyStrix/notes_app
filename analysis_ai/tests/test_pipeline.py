@@ -152,5 +152,36 @@ class TranscribeMissingUpload(unittest.TestCase):
                     transcribe.transcribe_pending(cfg, [note])
 
 
+class TranscribeEstimate(unittest.TestCase):
+    def _cfg(self, tmp):
+        return {"uploads_dir": tmp}
+
+    def test_duration_from_the_notes_app_is_used_first(self):
+        note = dict(_note("", type_="video"), media={"duration_seconds": 3600})
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertAlmostEqual(transcribe.estimate_seconds(self._cfg(tmp), note), 612)
+
+    def test_missing_duration_is_probed_from_the_file_and_cached(self):
+        note = dict(_note("", type_="video"), media={"original_filename": "a.mp4", "size_bytes": 5, "duration_seconds": None})
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "n1").mkdir()
+            (Path(tmp) / "n1" / "a.mp4").write_bytes(b"x")
+            probe = mock.Mock(return_value=mock.Mock(stdout="3600.5\n"))
+            with mock.patch.object(transcribe, "DURATIONS", Path(tmp) / "durations.json"), \
+                 mock.patch.object(transcribe, "load", return_value=None), \
+                 mock.patch.object(transcribe.shutil, "which", return_value="/usr/bin/ffprobe"), \
+                 mock.patch.object(transcribe.subprocess, "run", probe):
+                self.assertEqual(transcribe.duration_seconds(self._cfg(tmp), note), 3600.5)
+                self.assertEqual(transcribe.duration_seconds(self._cfg(tmp), note), 3600.5)
+            self.assertEqual(probe.call_count, 1)
+
+    def test_unknown_length_gives_no_estimate_rather_than_zero(self):
+        note = dict(_note("", type_="video"), media={"original_filename": "a.mp4", "size_bytes": 5, "duration_seconds": None})
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.object(transcribe, "DURATIONS", Path(tmp) / "durations.json"), \
+             mock.patch.object(transcribe, "load", return_value=None):
+            self.assertIsNone(transcribe.estimate_seconds(self._cfg(tmp), note))
+
+
 if __name__ == "__main__":
     unittest.main()

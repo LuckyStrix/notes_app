@@ -38,9 +38,44 @@ def mode(cfg: dict) -> str:
     return "local" if os.environ.get("AAI_IN_CONTAINER") else "docker"
 
 
-def estimate_seconds(note: dict) -> float:
+DURATIONS = store.D / "durations.json"  # cache of ffprobe results, keyed by note id
+
+
+def duration_seconds(cfg: dict, note: dict) -> float | None:
+    """How long a recording is. The notes app only fills this in when IT transcribes a
+    note, which it no longer does on its own, so fall back to our own transcript and
+    then to reading the (read-only) file with ffprobe. None if nothing works."""
+    media = note.get("media") or {}
+    if media.get("duration_seconds"):
+        return media["duration_seconds"]
+    transcript = load(note["id"])
+    if transcript and transcript.get("duration_seconds"):
+        return transcript["duration_seconds"]
+    if not media:
+        return None
+    cache = store.read_json(DURATIONS, {})
+    key = f"{media.get('original_filename')}:{media.get('size_bytes')}"  # a re-upload changes this
+    hit = cache.get(note["id"])
+    if hit and hit["key"] == key:
+        return hit["seconds"]
+    path = find_media(Path(cfg["uploads_dir"]), note)
+    if path is None or shutil.which("ffprobe") is None:
+        return None
+    try:
+        out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
+                             capture_output=True, text=True, timeout=30)
+        seconds = float(out.stdout.strip())
+    except (subprocess.SubprocessError, ValueError, OSError):
+        return None
+    cache[note["id"]] = {"key": key, "seconds": seconds}
+    store.write_json(DURATIONS, cache)
+    return seconds
+
+
+def estimate_seconds(cfg: dict, note: dict) -> float | None:
     """Rough wall-clock estimate: large-v3 measured at ~0.17x realtime on the idle GPU."""
-    return ((note.get("media") or {}).get("duration_seconds") or 0) * 0.17
+    duration = duration_seconds(cfg, note)
+    return duration * 0.17 if duration else None
 
 
 def _command(cfg: dict, note: dict, media: Path, name: str) -> list[str]:
