@@ -1,0 +1,41 @@
+# Optional add-on. Deliberately NOT part of the notes app's own docker-compose.yml:
+# the notes app runs identically without this. It only writes inside the "Brief" project.
+#
+#   docker compose -f daily_brief/docker-compose.yml up -d --build      (from the repo root)
+#   docker compose -f daily_brief/docker-compose.yml down               (stop it; data is kept)
+name: daily_brief
+
+services:
+  brief:
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DB_DATA_DIR: /data
+      # The notes app's API (published on the host by the notes app).
+      DB_NOTES_API_URL: http://host.docker.internal:8000
+      # 9router, on the compose network.
+      DB_ROUTER_URL: http://router:20128/v1
+    volumes:
+      # Google token + run logs (gitignored). Host path, so it is easy to back up.
+      - ${DB_DATA_LOCATION:-./data}:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - router
+    restart: unless-stopped
+
+  router:
+    build:
+      context: .
+      dockerfile: Dockerfile.9router
+    # Published so the dashboard (provider logins, API key) is reachable over Tailscale.
+    ports:
+      - "20128:20128"
+    volumes:
+      - router-data:/root/.9router
+    restart: unless-stopped
+
+volumes:
+  router-data:

@@ -1,0 +1,4 @@
+requests==2.32.3
+tzdata>=2024.1
+google-api-python-client>=2.130
+google-auth-oauthlib>=1.2

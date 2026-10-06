@@ -18,3 +18,7 @@ build/
 # derived from personal course material and the repo is public -- code only.
 analysis_ai/data/
 analysis_ai/.venv/
+
+# daily_brief: Google token, run logs and the facts it gathers are personal -- code only.
+daily_brief/data/
+daily_brief/.venv/

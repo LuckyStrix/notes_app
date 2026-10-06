@@ -1,0 +1,8 @@
+FROM node:22-slim
+
+# 9router keeps its providers, API keys and settings under ~/.9router; compose mounts
+# a volume there. --skip-update: the image is the version pin.
+RUN npm install -g 9router
+
+EXPOSE 20128
+CMD ["9router", "--host", "0.0.0.0", "--port", "20128", "--no-browser", "--skip-update"]
