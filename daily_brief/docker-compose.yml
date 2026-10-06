@@ -27,14 +27,16 @@ services:
     restart: unless-stopped
 
   router:
-    build:
-      context: .
-      dockerfile: Dockerfile.9router
+    # 9router's published image. Its state (providers, API keys, settings) lives in
+    # /app/data; to keep an existing install, copy ~/.9router into this volume.
+    image: decolua/9router:latest
+    environment:
+      DATA_DIR: /app/data
     # Published so the dashboard (provider logins, API key) is reachable over Tailscale.
     ports:
       - "20128:20128"
     volumes:
-      - router-data:/root/.9router
+      - router-data:/app/data
     restart: unless-stopped
 
 volumes:
