@@ -24,5 +24,7 @@ daily_brief/data/
 daily_brief/.venv/
 # daily_brief: Google OAuth client secret and token must never be committed.
 daily_brief/client_secret*.json
+# ...and wherever else one gets downloaded to (e.g. the repo root).
+client_secret*.json
 daily_brief/google_token.json
 daily_brief/token/

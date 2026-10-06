@@ -142,6 +142,9 @@ body {
 .tree-status-dot.processing { background: #d97706; }
 .tree-status-dot.idle { background: var(--muted); opacity: 0.6; }
 .tree-status-dot.error { background: #dc2626; }
+@keyframes upload-pulse { 50% { opacity: 0.3; } }
+.tree-row.active .tree-status-dot.uploading { background: white; }
+.tree-status-dot.uploading { background: var(--accent); animation: upload-pulse 1.2s ease-in-out infinite; }
 
 .tree-row.dragging { opacity: 0.4; }
 .tree-row.drop-target { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--bg); }
@@ -392,3 +395,6 @@ section.card label { display: block; margin: 0.5rem 0 0.25rem; }
 
 .citation-thumb { display: block; width: 100%; max-width: 220px; border-radius: 6px; margin-top: 0.25rem; }
 section.card input, section.card select { width: 100%; margin-bottom: 0.25rem; }
+
+.upload-status { display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.5rem; max-width: 32rem; }
+.upload-status progress { width: 100%; height: 0.5rem; }

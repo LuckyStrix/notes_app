@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "./client";
+import { uploadNoteFile } from "./uploads";
 import type { AppSettings, BackupList, ChatMessage, ChatSession, Diagram, DiagramCandidate, Graph, GraphSummary, Group, Note, NoteFile, NoteType, NoteVersion, Project, SearchResult, Transcript } from "./types";
 
 // Projects
@@ -243,8 +244,8 @@ export function useTranscribeNote(projectId: string | undefined) {
 export function useUploadMedia() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ noteId, file }: { noteId: string; file: File }) =>
-      api.upload<NoteFile>(`/notes/${noteId}/media`, file),
+    // Progress and errors are tracked per note in ./uploads (useUploadState).
+    mutationFn: ({ noteId, file }: { noteId: string; file: File }) => uploadNoteFile(noteId, file),
     onSuccess: (_data, { noteId }) => {
       qc.invalidateQueries({ queryKey: ["notes", noteId] });
       qc.invalidateQueries({ queryKey: ["notes", noteId, "file"] });

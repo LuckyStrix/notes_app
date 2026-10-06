@@ -25,9 +25,4 @@ export const api = {
   put: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: "PUT", body: body !== undefined ? JSON.stringify(body) : undefined }),
   delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
-  upload: <T>(path: string, file: File) => {
-    const form = new FormData();
-    form.append("file", file);
-    return request<T>(path, { method: "POST", body: form });
-  },
 };

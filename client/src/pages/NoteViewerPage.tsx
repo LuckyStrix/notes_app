@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
 import { useLocation, useParams } from "react-router-dom";
 
+import { formatProgress, useUploadState, type UploadState } from "../api/uploads";
 import { useNote, useNoteFile, useNoteVersions, useRestoreNoteVersion, useSettings, useTranscribeNote, useTranscript, useUpdateNote, useUploadMedia } from "../api/hooks";
 import MediaPlayer, { type MediaPlayerHandle } from "../components/player/MediaPlayer";
 import TranscriptView from "../components/player/TranscriptView";
@@ -51,7 +52,9 @@ export default function NoteViewerPage() {
   // types that go through a background pipeline (upload -> processing -> ready/error).
   const showStatusBadge = note?.type !== "text";
 
-  const { data: noteFile } = useNoteFile(isMedia || isDocument ? noteId : undefined, { poll: isProcessing });
+  const { data: noteFile, isError: noFileOnServer } = useNoteFile(isMedia || isDocument ? noteId : undefined, { poll: isProcessing });
+  const upload = useUploadState(noteId);
+  const uploading = !!upload?.active;
   const isPdf = (noteFile?.original_filename ?? "").toLowerCase().endsWith(".pdf");
   // Diagram extraction only makes sense for a PDF's pages/images or a
   // video's frames -- docx/txt and audio have no visual content to scan.
@@ -327,7 +330,7 @@ export default function NoteViewerPage() {
 
       {showStatusBadge && (
         <div className="note-meta-row">
-          <span className={`badge badge-${note.status}`}>{awaitingTranscription ? "not transcribed" : note.status}</span>
+          <span className={`badge badge-${note.status}`}>{uploading ? "uploading" : awaitingTranscription ? (noFileOnServer ? "no file" : "not transcribed") : note.status}</span>
           {note.status === "error" && note.error_message && <span className="error">{note.error_message}</span>}
         </div>
       )}
@@ -363,9 +366,11 @@ export default function NoteViewerPage() {
           <>
             {!noteFile ? (
               <div>
-                <p className="muted">No file uploaded yet.</p>
-                <input type="file" accept={DOCUMENT_ACCEPT} onChange={handleFileSelected} disabled={uploadMedia.isPending} />
-                {uploadMedia.isPending && <p className="muted">Uploading…</p>}
+                <p className="muted">
+                  No file uploaded yet.{noFileOnServer && !upload && " If you uploaded one before, it didn't finish — choose it again."}
+                </p>
+                <input type="file" accept={DOCUMENT_ACCEPT} onChange={handleFileSelected} disabled={uploading} />
+                <UploadStatus upload={upload} />
               </div>
             ) : (
               <div className="note-document-area">
@@ -415,8 +420,9 @@ export default function NoteViewerPage() {
                     type="file"
                     accept={DOCUMENT_ACCEPT}
                     onChange={handleFileSelected}
-                    disabled={uploadMedia.isPending}
+                    disabled={uploading}
                   />
+                  <UploadStatus upload={upload} />
                 </div>
               </div>
             )}
@@ -427,14 +433,16 @@ export default function NoteViewerPage() {
           <div className="note-media-area">
             {!noteFile ? (
               <div>
-                <p className="muted">No file uploaded yet.</p>
+                <p className="muted">
+                  No file uploaded yet.{noFileOnServer && !upload && " If you uploaded one before, it didn't finish — choose it again."}
+                </p>
                 <input
                   type="file"
                   accept={note.type === "video" ? "video/*" : "audio/*"}
                   onChange={handleFileSelected}
-                  disabled={uploadMedia.isPending}
+                  disabled={uploading}
                 />
-                {uploadMedia.isPending && <p className="muted">Uploading…</p>}
+                <UploadStatus upload={upload} />
               </div>
             ) : (
               <>
@@ -504,14 +512,30 @@ export default function NoteViewerPage() {
                     type="file"
                     accept={note.type === "video" ? "video/*" : "audio/*"}
                     onChange={handleFileSelected}
-                    disabled={uploadMedia.isPending}
+                    disabled={uploading}
                   />
+                  <UploadStatus upload={upload} />
                 </div>
               </>
             )}
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function UploadStatus({ upload }: { upload: UploadState | undefined }) {
+  if (!upload) return null;
+  if (upload.error) return <p className="error">{upload.error} Choose the file again to retry.</p>;
+  if (!upload.active) return null;
+  const sent = upload.total > 0 && upload.loaded >= upload.total;
+  return (
+    <div className="upload-status">
+      <progress value={upload.loaded} max={upload.total || 1} />
+      <span className="muted">
+        {sent ? "Saving on the server…" : `Uploading ${upload.fileName} · ${formatProgress(upload)}`} — keep this tab open.
+      </span>
     </div>
   );
 }

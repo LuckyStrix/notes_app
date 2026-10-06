@@ -13,6 +13,7 @@ import {
   useUpdateNote,
   useUploadMedia,
 } from "../../api/hooks";
+import { formatProgress, useUploadState } from "../../api/uploads";
 import type { Group, Note, NoteType } from "../../api/types";
 
 interface TreeGroup extends Group {
@@ -420,6 +421,7 @@ function NoteRow({
   drag: DragHandlers;
 }) {
   const isDragging = drag.dragItem?.kind === "note" && drag.dragItem.id === note.id;
+  const upload = useUploadState(note.id);
 
   return (
     <div
@@ -437,7 +439,12 @@ function NoteRow({
         <span className="tree-label">{note.title}</span>
         {/* A recording that's just been uploaded is "pending" until you press Transcribe --
             it isn't working on anything, so it gets a quiet dot instead of the busy one. */}
-        {note.status === "pending" && (note.type === "audio" || note.type === "video") && (
+        {upload?.active ? (
+          <span className="tree-status-dot uploading" title={`Uploading — ${formatProgress(upload)}`} />
+        ) : upload?.error ? (
+          <span className="tree-status-dot error" title={upload.error} />
+        ) : null}
+        {!upload?.active && !upload?.error && note.status === "pending" && (note.type === "audio" || note.type === "video") && (
           <span className="tree-status-dot idle" title="Not transcribed yet" />
         )}
         {(note.status === "processing" || (note.status === "pending" && note.type !== "audio" && note.type !== "video")) && (
