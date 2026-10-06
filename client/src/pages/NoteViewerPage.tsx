@@ -6,9 +6,25 @@ import MediaPlayer, { type MediaPlayerHandle } from "../components/player/MediaP
 import TranscriptView from "../components/player/TranscriptView";
 import NoteHistoryPanel from "../components/notes/NoteHistoryPanel";
 import DiagramGallery from "../components/diagrams/DiagramGallery";
+import MarkdownContent from "../components/MarkdownContent";
 
 const DOCUMENT_ACCEPT = ".pdf,.doc,.docx,.txt,.md";
 const AUTOSAVE_DELAY_MS = 800;
+const TEXT_MODE_KEY = "notes.textMode";
+type TextMode = "edit" | "preview";
+
+// Text notes open rendered (so **bold**, ## headings, lists and links show as formatting) and
+// switch to the plain textarea to edit. An empty note opens for typing; otherwise the last
+// choice is remembered per browser. localStorage can throw (private windows), so it's optional.
+function preferredTextMode(body: string | null | undefined): TextMode {
+  if (!body?.trim()) return "edit";
+  try {
+    return localStorage.getItem(TEXT_MODE_KEY) === "edit" ? "edit" : "preview";
+  } catch {
+    return "preview";
+  }
+}
+
 const INLINE_PREVIEWABLE_EXTENSIONS = new Set(["pdf", "txt", "md"]);
 
 function canPreviewInline(filename: string | null | undefined): boolean {
@@ -55,6 +71,7 @@ export default function NoteViewerPage() {
   // uploaded file itself (video player front-and-center, or the raw
   // PDF/text file inline instead of what was pulled out of it).
   const [viewMode, setViewMode] = useState<"extracted" | "original" | "diagrams">("extracted");
+  const [textMode, setTextMode] = useState<TextMode>("edit");
   const playerRef = useRef<MediaPlayerHandle>(null);
   const documentBodyRef = useRef<HTMLTextAreaElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -78,6 +95,7 @@ export default function NoteViewerPage() {
       setBody(note.body ?? "");
       setCurrentTime(0);
       setViewMode("extracted");
+      setTextMode(preferredTextMode(note.body));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [note?.id]);
@@ -227,6 +245,17 @@ export default function NoteViewerPage() {
     }
   }
 
+  // Clicking a toggle button blurs the textarea first, so any pending edit is flushed (and
+  // versioned) before the rendered view appears.
+  function chooseTextMode(mode: TextMode) {
+    setTextMode(mode);
+    try {
+      localStorage.setItem(TEXT_MODE_KEY, mode);
+    } catch {
+      /* per-browser convenience only */
+    }
+  }
+
   function handleBodyChange(value: string) {
     setBody(value);
     if (bodySaveTimer.current) clearTimeout(bodySaveTimer.current);
@@ -284,13 +313,29 @@ export default function NoteViewerPage() {
 
       <div className="note-body-area">
         {note.type === "text" && (
-          <textarea
-            className="note-body-textarea"
-            value={body}
-            placeholder="Start writing…"
-            onChange={(e) => handleBodyChange(e.target.value)}
-            onBlur={() => flushBodySave(body, true)}
-          />
+          <>
+            <div className="view-toggle">
+              <button className={textMode === "preview" ? "active" : ""} onClick={() => chooseTextMode("preview")}>
+                Preview
+              </button>
+              <button className={textMode === "edit" ? "active" : ""} onClick={() => chooseTextMode("edit")}>
+                Edit
+              </button>
+            </div>
+            {textMode === "edit" ? (
+              <textarea
+                className="note-body-textarea"
+                value={body}
+                placeholder="Start writing…"
+                onChange={(e) => handleBodyChange(e.target.value)}
+                onBlur={() => flushBodySave(body, true)}
+              />
+            ) : (
+              <div className="note-body-preview" title="Double-click to edit" onDoubleClick={() => chooseTextMode("edit")}>
+                {body.trim() ? <MarkdownContent content={body} /> : <p className="muted">Nothing to show yet. Click Edit to start writing.</p>}
+              </div>
+            )}
+          </>
         )}
 
         {isDocument && (
