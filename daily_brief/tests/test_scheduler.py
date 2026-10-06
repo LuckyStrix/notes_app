@@ -8,7 +8,9 @@ from zoneinfo import ZoneInfo
 
 from daily_brief import github, google
 from daily_brief.config import Env
-from daily_brief.control import DEFAULT_INSTRUCTIONS_NOTE, parse_command, parse_instructions, update_if_changed
+from daily_brief.config import NOTE_CONTROL
+from daily_brief.control import (DEFAULT_INSTRUCTIONS_NOTE, DEFAULTS, control_result, parse_command,
+                                 parse_instructions, update_if_changed)
 from daily_brief.panel import Router
 from daily_brief.scheduler import MAX_ATTEMPTS, Scheduler, State, is_due
 from tests.fakes import FakeNotesApi
@@ -45,7 +47,15 @@ class ControlParsingTests(unittest.TestCase):
         self.assertEqual(parse_command("# Brief Control\n\nType `run` to go\n\nrun\n"), "run")
         self.assertEqual(parse_command("Dry run\n"), "dry-run")
         self.assertEqual(parse_command("dry-run"), "dry-run")
-        self.assertIsNone(parse_command("# Brief Control\n\nType `run` (write today's brief now)\n---\nrun\n"))
+        self.assertIsNone(parse_command("# Brief Control\n\nType `run` (write today's brief now)\n"))
+
+    def test_command_typed_at_the_end_of_the_seeded_note_is_seen(self):
+        # The seeded note ends with a '---' rule; the obvious place to type is below it.
+        self.assertEqual(parse_command(DEFAULTS[NOTE_CONTROL] + "run"), "run")
+        self.assertEqual(parse_command(DEFAULTS[NOTE_CONTROL] + "\ndry run\n"), "dry-run")
+
+    def test_a_result_can_never_contain_a_command_line(self):
+        self.assertIsNone(parse_command(control_result("Saved.\nrun\ndry run\n- [ ] run")))
 
     def test_instruction_sections(self):
         got = parse_instructions(DEFAULT_INSTRUCTIONS_NOTE)

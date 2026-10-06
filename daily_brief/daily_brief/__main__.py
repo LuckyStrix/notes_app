@@ -52,6 +52,8 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--dry-run", action="store_true", help="print it, save nothing")
     auth = sub.add_parser("auth-google", help="one-time Google consent; run where a browser is available")
     auth.add_argument("--client-secret", type=Path, required=True, help="OAuth client JSON from Google Cloud Console")
+    auth.add_argument("--token-out", type=Path, default=Path("google_token.json"),
+                      help="where to write the token (default: ./google_token.json)")
     sub.add_parser("healthcheck")
     args = ap.parse_args(argv)
     env = Env.from_environ()
@@ -63,8 +65,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_run(env, args.dry_run)
     elif args.cmd == "auth-google":
         from .google import authorize
-        authorize(args.client_secret, env.data_dir / "google_token.json")
-        print(f"Token saved to {env.data_dir / 'google_token.json'}. Copy it into the container's data folder.")
+        authorize(args.client_secret, args.token_out)
+        print(f"Token saved to {args.token_out}. Copy it to daily_brief/data/google_token.json on the host that runs the container.")
     elif args.cmd == "healthcheck":
         return cmd_healthcheck(env)
     return 0

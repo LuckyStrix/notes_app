@@ -32,7 +32,7 @@ Keep it short. If drafts disagree about what matters most, choose what the deadl
 _COMMAND_HELP = """\
 # Brief Control
 
-Type `run` (write today's brief now) or `dry run` (preview it below, save nothing) on a line of its own, then save. It is picked up within a minute and this note is rewritten with the result.
+Type `run` (write today's brief now) or `dry run` (preview it below, save nothing) on a line of its own anywhere in this note, then save. It is picked up within a minute and this note is rewritten with the result.
 
 ---
 """
@@ -60,10 +60,10 @@ def parse_instructions(text: str) -> dict[str, str]:
 
 
 def parse_command(text: str) -> str | None:
-    """'run' or 'dry-run' if a command line appears before the first '---' rule."""
+    """'run' or 'dry-run' if a line of the note is exactly that, anywhere in it. (An earlier
+    version only looked above the first '---' rule, but the seeded note ends with one, so a
+    command typed at the end of the note, the obvious place, was never seen.)"""
     for line in text.splitlines():
-        if line.strip() == "---":
-            break
         m = _COMMAND.match(line)
         if m:
             return "dry-run" if m.group(1).lower().startswith("dry") else "run"
@@ -71,7 +71,10 @@ def parse_command(text: str) -> str | None:
 
 
 def control_result(text: str) -> str:
-    return _COMMAND_HELP + "\n" + text.strip() + "\n"
+    """The rewritten note: help text plus the result. A result line that happens to read
+    exactly like a command is wrapped in backticks so the result can never re-trigger a run."""
+    safe = "\n".join(f"`{ln.strip()}`" if _COMMAND.match(ln) else ln for ln in text.strip().splitlines())
+    return _COMMAND_HELP + "\n" + safe + "\n"
 
 
 def ensure_control_notes(api) -> dict[str, dict]:

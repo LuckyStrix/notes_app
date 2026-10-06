@@ -17,9 +17,9 @@ The notes app does not depend on this folder and works identically without it. T
 3. **Google** (one time). In Google Cloud Console create a project, enable the *Google Calendar API* and *Google Tasks API*, create an OAuth client of type *Desktop app*, and set the consent screen's publishing status to **In production** (it is only you; the "unverified app" warning is expected). If you leave it in *Testing*, Google expires the token after 7 days. Then, on any machine with a browser:
    ```
    pip install -r daily_brief/requirements.txt
-   DB_DATA_DIR=./token python -m daily_brief auth-google --client-secret client_secret.json
+   python -m daily_brief auth-google --client-secret client_secret.json
    ```
-   and copy `token/google_token.json` into `daily_brief/data/`.
+   This opens a browser, then writes `google_token.json` in the current folder (use `--token-out PATH` to put it elsewhere). Copy it to `daily_brief/data/google_token.json` on the machine that runs the container (create the `data` folder if needed). The commands are the same in PowerShell and bash.
 4. The first time it runs it creates the **Brief** project and four notes in it. Set `drafters` and `editor` in **Brief Settings** and you're done. (Until you do, you get the brief without the AI sections.)
 
 ## The four notes
@@ -28,7 +28,7 @@ The notes app does not depend on this folder and works identically without it. T
 |---|---|---|
 | **Brief Instructions** | you | "About me", plus a section each for the Drafter and the Editor. Read on every run. |
 | **Brief Settings** | you | `key: value` lines: run time, timezone, panel models, allowlisted notes-app projects, GitHub owner, lookahead. Bad values are ignored and reported in Status. |
-| **Brief Control** | you | Type `run` or `dry run` on a line and save. It is picked up within a minute and the note is rewritten with the result (a dry run puts the whole brief there and saves nothing). |
+| **Brief Control** | you | Type `run` or `dry run` on a line of its own, anywhere in the note, and save. It is picked up within a minute and the note is rewritten with the result (a dry run puts the whole brief there and saves nothing). |
 | **Brief Status** | the job | Last run, which models succeeded or failed, lines removed by checks, data problems, settings problems. |
 
 Dated briefs go in a **Briefs** folder. A run later the same day updates that day's note in place.
@@ -64,7 +64,7 @@ Everything the job gathers is sent to whichever providers 9router routes to, and
 python -m daily_brief serve            # the scheduler loop (what the container runs)
 python -m daily_brief run --dry-run    # print a brief, save nothing
 python -m daily_brief run              # make today's brief now
-python -m daily_brief auth-google --client-secret client_secret.json
+python -m daily_brief auth-google --client-secret client_secret.json [--token-out PATH]
 python -m daily_brief healthcheck      # exit 0 if the serve loop is alive
 ```
 
